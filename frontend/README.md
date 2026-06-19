@@ -1,16 +1,72 @@
-# React + Vite
+# Frontend - CRA Project
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Présentation
 
-Currently, two official plugins are available:
+Le frontend est développé avec React et Vite.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Il permet aux différents acteurs de l'application (Collaborateur, Client, RH et Administrateur) d'interagir avec le système de gestion des CRA.
 
-## React Compiler
+## Technologies utilisées
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+* React
+* Vite
+* JavaScript ES6+
+* JSX
+* Axios
+* React Router
+* CSS
 
-## Expanding the ESLint configuration
+## Lancement du projet
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Installation des dépendances :
+
+```bash
+npm install
+```
+
+Lancement du serveur de développement :
+
+```bash
+npm run dev
+```
+
+## Structure du projet
+
+```text
+src/
+├── pages/
+├── components/
+├── services/
+├── context/
+└── styles/
+```
+
+## Pages principales
+
+* LoginPage
+* DashboardPage
+* CraListPage
+* CraCreatePage
+* CraFormPage
+* CraDetailPage
+* ClientCraValidationPage
+* AdminCraValidationPage
+* RhDashboardPage
+* AdminUsersPage
+* AdminClientsPage
+* AdminHolidaysPage
+* AdminStatsPage
+
+## Communication API
+
+Les appels vers le backend sont centralisés dans le dossier :
+
+```text
+src/services/
+```
+
+et utilisent Axios.
+
+## Objectif
+
+Fournir une interface moderne, intuitive et responsive permettant de gérer l'ensemble du cycle de vie d'un CRA.
