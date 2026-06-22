@@ -7,6 +7,8 @@ import { ClientsModule } from './clients/clients.module';
 import { CraModule } from './cra/cra.module';
 import { HolidaysModule } from './holidays/holidays.module';
 import { AuthModule } from './auth/auth.module';
+import { PdfModule } from './pdf/pdf.module';
+import { StatsModule } from './stats/stats.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { AuthModule } from './auth/auth.module';
     CraModule,
     HolidaysModule,
     AuthModule,
+    PdfModule,
+    StatsModule,
   ],
 })
 export class AppModule {}

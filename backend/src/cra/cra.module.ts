@@ -8,6 +8,7 @@ import { Client } from '../clients/client.entity';
 
 import { CraService } from './cra.service';
 import { CraController } from './cra.controller';
+import { PdfModule } from '../pdf/pdf.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CraController } from './cra.controller';
       User,
       Client,
     ]),
+    PdfModule,
   ],
   controllers: [CraController],
   providers: [CraService],
