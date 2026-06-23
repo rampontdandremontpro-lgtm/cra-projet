@@ -30,57 +30,117 @@ export class CraService {
   ) {}
 
   private async getMartiniqueHolidays(annee: number): Promise<string[]> {
-  const response = await fetch(
-    'https://calendrier.api.gouv.fr/jours-feries/martinique.json',
-  );
+    const response = await fetch(
+      'https://calendrier.api.gouv.fr/jours-feries/martinique.json',
+    );
 
-  const holidays = await response.json();
+    const holidays = await response.json();
 
-  return Object.keys(holidays).filter((date) =>
-    date.startsWith(String(annee)),
-  );
+    return Object.keys(holidays).filter((date) =>
+      date.startsWith(String(annee)),
+    );
+  }
+
+  private async validateCraDaysDates(
+  jours: { date: string; type: string; duree: number; commentaire?: string }[],
+  mois: number,
+  annee: number,
+): Promise<void> {
+  const currentYear = new Date().getFullYear();
+
+  if (annee !== currentYear) {
+    throw new BadRequestException(
+      `L'année du CRA doit être ${currentYear}.`,
+    );
+  }
+
+  if (!Number.isInteger(annee) || String(annee).length !== 4) {
+    throw new BadRequestException(
+      "L'année du CRA doit contenir exactement 4 chiffres.",
+    );
+  }
+
+  for (const jour of jours || []) {
+    if (!jour.date) continue;
+
+    const [year, month, day] = jour.date.split('-').map(Number);
+
+    if (year !== annee) {
+      throw new BadRequestException(
+        `La date ${jour.date} ne correspond pas à l'année du CRA.`,
+      );
+    }
+
+    if (month !== mois) {
+      throw new BadRequestException(
+        `La date ${jour.date} ne correspond pas au mois du CRA.`,
+      );
+    }
+
+    const date = new Date(Date.UTC(year, month - 1, day));
+    const dayOfWeek = date.getUTCDay();
+
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      throw new BadRequestException(
+        `La date ${jour.date} est un week-end et ne peut pas être déclarée dans le CRA.`,
+      );
+    }
+
+    const holidays = await this.getMartiniqueHolidays(year);
+
+    if (holidays.includes(jour.date)) {
+      throw new BadRequestException(
+        `La date ${jour.date} est un jour férié et ne peut pas être déclarée dans le CRA.`,
+      );
+    }
+  }
 }
 
   private async calculateWorkingDays(mois: number, annee: number): Promise<number> {
-  let workingDays = 0;
+    let workingDays = 0;
 
-  const holidays = await this.getMartiniqueHolidays(annee);
-  const daysInMonth = new Date(annee, mois, 0).getDate();
+    const holidays = await this.getMartiniqueHolidays(annee);
+    const daysInMonth = new Date(annee, mois, 0).getDate();
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(annee, mois - 1, day);
-    const dayOfWeek = date.getDay();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(annee, mois - 1, day);
+      const dayOfWeek = date.getDay();
+      const formattedDate = date.toISOString().split('T')[0];
 
-    const formattedDate = date.toISOString().split('T')[0];
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isHoliday = holidays.includes(formattedDate);
 
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const isHoliday = holidays.includes(formattedDate);
-
-    if (!isWeekend && !isHoliday) {
-      workingDays++;
+      if (!isWeekend && !isHoliday) {
+        workingDays++;
+      }
     }
+
+    return workingDays;
   }
 
-  return workingDays;
-}
-
-private calculateDeclaredDays(cra: Cra): number {
-  return cra.jours
-    .filter((jour) =>
-      ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
-    )
-    .reduce((total, jour) => total + Number(jour.duree), 0);
-}
+  private calculateDeclaredDays(cra: Cra): number {
+    return cra.jours
+      .filter((jour) =>
+        ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
+      )
+      .reduce((total, jour) => total + Number(jour.duree), 0);
+  }
 
   async generatePdf(id: number): Promise<Buffer> {
-  const cra = await this.findOne(id);
-  return this.pdfService.generateCraPdf(cra);
-}
+    const cra = await this.findOne(id);
+    return this.pdfService.generateCraPdf(cra);
+  }
 
-  async create(createCraDto: CreateCraDto): Promise<Cra> {
+  async create(createCraDto: CreateCraDto, userId: number): Promise<Cra> {
+    await this.validateCraDaysDates(
+  createCraDto.jours || [],
+  createCraDto.mois,
+  createCraDto.annee,
+);
+
     const collaborateur = await this.usersRepository.findOne({
-      where: { id: createCraDto.collaborateur_id },
-    });
+  where: { id: userId },
+});
 
     if (!collaborateur) {
       throw new NotFoundException('Collaborateur introuvable');
@@ -114,18 +174,39 @@ private calculateDeclaredDays(cra: Cra): number {
       client: true,
       jours: true,
     },
+    order: {
+      created_at: 'DESC',
+    },
   });
 }
 
-  async findOne(id: number): Promise<Cra> {
-  const cra = await this.craRepository.findOne({
-    where: { id },
+findByCollaborateur(userId: number): Promise<Cra[]> {
+  return this.craRepository.find({
+    where: {
+      collaborateur: {
+        id: userId,
+      },
+    },
     relations: {
       collaborateur: true,
       client: true,
       jours: true,
     },
+    order: {
+      created_at: 'DESC',
+    },
   });
+}
+
+  async findOne(id: number): Promise<Cra> {
+    const cra = await this.craRepository.findOne({
+      where: { id },
+      relations: {
+        collaborateur: true,
+        client: true,
+        jours: true,
+      },
+    });
 
     if (!cra) {
       throw new NotFoundException('CRA introuvable');
@@ -136,6 +217,14 @@ private calculateDeclaredDays(cra: Cra): number {
 
   async update(id: number, updateCraDto: UpdateCraDto): Promise<Cra> {
     const cra = await this.findOne(id);
+
+    if (updateCraDto.jours) {
+      await this.validateCraDaysDates(
+  updateCraDto.jours,
+  updateCraDto.mois ?? cra.mois,
+  updateCraDto.annee ?? cra.annee,
+);
+    }
 
     if (updateCraDto.collaborateur_id) {
       const collaborateur = await this.usersRepository.findOne({
@@ -161,17 +250,9 @@ private calculateDeclaredDays(cra: Cra): number {
       cra.client = client;
     }
 
-    if (updateCraDto.mois !== undefined) {
-      cra.mois = updateCraDto.mois;
-    }
-
-    if (updateCraDto.annee !== undefined) {
-      cra.annee = updateCraDto.annee;
-    }
-
-    if (updateCraDto.statut !== undefined) {
-      cra.statut = updateCraDto.statut;
-    }
+    if (updateCraDto.mois !== undefined) cra.mois = updateCraDto.mois;
+    if (updateCraDto.annee !== undefined) cra.annee = updateCraDto.annee;
+    if (updateCraDto.statut !== undefined) cra.statut = updateCraDto.statut;
 
     if (updateCraDto.jours) {
       await this.craDayRepository.delete({ cra: { id: cra.id } });
@@ -185,117 +266,135 @@ private calculateDeclaredDays(cra: Cra): number {
   }
 
   async submit(id: number): Promise<Cra> {
-  const cra = await this.findOne(id);
+    const cra = await this.findOne(id);
 
-  if (
-    cra.statut !== CraStatus.BROUILLON &&
-    cra.statut !== CraStatus.REFUSE_CLIENT &&
-    cra.statut !== CraStatus.REFUSE_ADMIN
-  ) {
-    throw new BadRequestException('Ce CRA ne peut pas être soumis');
+    if (
+      cra.statut !== CraStatus.BROUILLON &&
+      cra.statut !== CraStatus.REFUSE_CLIENT &&
+      cra.statut !== CraStatus.REFUSE_ADMIN
+    ) {
+      throw new BadRequestException('Ce CRA ne peut pas être soumis');
+    }
+
+    await this.validateCraDaysDates(cra.jours || [], cra.mois, cra.annee);
+
+    const workingDays = await this.calculateWorkingDays(cra.mois, cra.annee);
+    const declaredDays = this.calculateDeclaredDays(cra);
+
+    if (declaredDays !== workingDays) {
+      throw new BadRequestException(
+        `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
+      );
+    }
+
+    cra.statut = CraStatus.SOUMIS_CLIENT;
+    cra.date_soumission = new Date();
+
+    return this.craRepository.save(cra);
   }
 
-  const workingDays = await this.calculateWorkingDays(cra.mois, cra.annee);
-  const declaredDays = this.calculateDeclaredDays(cra);
+  async checkCraBeforeSubmit(createCraDto: CreateCraDto) {
+    await this.validateCraDaysDates(
+  createCraDto.jours || [],
+  createCraDto.mois,
+  createCraDto.annee,
+);
 
-if (declaredDays !== workingDays) {
-  throw new BadRequestException(
-    `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
-  );
-}
-
-  cra.statut = CraStatus.SOUMIS_CLIENT;
-  cra.date_soumission = new Date();
-
-  return this.craRepository.save(cra);
-}
-
-async checkCraBeforeSubmit(createCraDto: CreateCraDto) {
-  const workingDays = await this.calculateWorkingDays(
-    createCraDto.mois,
-    createCraDto.annee,
-  );
-
-  const declaredDays = (createCraDto.jours || [])
-    .filter((jour) =>
-      ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
-    )
-    .reduce((total, jour) => total + Number(jour.duree), 0);
-
-  if (declaredDays !== workingDays) {
-    throw new BadRequestException(
-      `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
+    const workingDays = await this.calculateWorkingDays(
+      createCraDto.mois,
+      createCraDto.annee,
     );
+
+    const declaredDays = (createCraDto.jours || [])
+      .filter((jour) =>
+        ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
+      )
+      .reduce((total, jour) => total + Number(jour.duree), 0);
+
+    if (declaredDays !== workingDays) {
+      throw new BadRequestException(
+        `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
+      );
+    }
+
+    return {
+      message: 'CRA cohérent',
+      declaredDays,
+      workingDays,
+    };
   }
 
-  return {
-    message: 'CRA cohérent',
-    declaredDays,
-    workingDays,
-  };
-}
+  async validateClient(id: number): Promise<Cra> {
+    const cra = await this.findOne(id);
 
-async validateClient(id: number): Promise<Cra> {
-  const cra = await this.findOne(id);
+    if (cra.statut !== CraStatus.SOUMIS_CLIENT) {
+      throw new BadRequestException(
+        'Ce CRA doit être soumis au client avant validation',
+      );
+    }
 
-  if (cra.statut !== CraStatus.SOUMIS_CLIENT) {
-    throw new BadRequestException('Ce CRA doit être soumis au client avant validation');
+    cra.statut = CraStatus.VALIDE_CLIENT;
+    cra.date_validation_client = new Date();
+
+    return this.craRepository.save(cra);
   }
 
-  cra.statut = CraStatus.VALIDE_CLIENT;
-  cra.date_validation_client = new Date();
+  async refuseClient(id: number, motif: string): Promise<Cra> {
+    const cra = await this.findOne(id);
 
-  return this.craRepository.save(cra);
-}
+    if (cra.statut !== CraStatus.SOUMIS_CLIENT) {
+      throw new BadRequestException(
+        'Ce CRA ne peut pas être refusé par le client',
+      );
+    }
 
-async refuseClient(id: number, motif: string): Promise<Cra> {
-  const cra = await this.findOne(id);
+    if (!motif || motif.trim() === '') {
+      throw new BadRequestException('Le motif de refus client est obligatoire');
+    }
 
-  if (cra.statut !== CraStatus.SOUMIS_CLIENT) {
-    throw new BadRequestException('Ce CRA ne peut pas être refusé par le client');
+    cra.statut = CraStatus.REFUSE_CLIENT;
+    cra.date_refus_client = new Date();
+    cra.motif_refus_client = motif;
+
+    return this.craRepository.save(cra);
   }
 
-  if (!motif || motif.trim() === '') {
-    throw new BadRequestException('Le motif de refus client est obligatoire');
+  async validateAdmin(id: number): Promise<Cra> {
+    const cra = await this.findOne(id);
+
+    if (cra.statut !== CraStatus.VALIDE_CLIENT) {
+      throw new BadRequestException(
+        'Ce CRA doit être validé par le client avant validation admin',
+      );
+    }
+
+    cra.statut = CraStatus.VALIDE_ADMIN;
+    cra.date_validation_admin = new Date();
+
+    return this.craRepository.save(cra);
   }
 
-  cra.statut = CraStatus.REFUSE_CLIENT;
-  cra.date_refus_client = new Date();
-  cra.motif_refus_client = motif;
+  async refuseAdmin(id: number, motif: string): Promise<Cra> {
+    const cra = await this.findOne(id);
 
-  return this.craRepository.save(cra);
-}
+    if (cra.statut !== CraStatus.VALIDE_CLIENT) {
+      throw new BadRequestException(
+        'Ce CRA ne peut pas être refusé par l’administrateur',
+      );
+    }
 
-async validateAdmin(id: number): Promise<Cra> {
-  const cra = await this.findOne(id);
+    if (!motif || motif.trim() === '') {
+      throw new BadRequestException(
+        'Le motif de refus administrateur est obligatoire',
+      );
+    }
 
-  if (cra.statut !== CraStatus.VALIDE_CLIENT) {
-    throw new BadRequestException('Ce CRA doit être validé par le client avant validation admin');
+    cra.statut = CraStatus.REFUSE_ADMIN;
+    cra.date_refus_admin = new Date();
+    cra.motif_refus_admin = motif;
+
+    return this.craRepository.save(cra);
   }
-
-  cra.statut = CraStatus.VALIDE_ADMIN;
-  cra.date_validation_admin = new Date();
-
-  return this.craRepository.save(cra);
-}
-
-async refuseAdmin(id: number, motif: string): Promise<Cra> {
-  const cra = await this.findOne(id);
-
-  if (cra.statut !== CraStatus.VALIDE_CLIENT) {
-    throw new BadRequestException('Ce CRA ne peut pas être refusé par l’administrateur');
-  }
-
-  if (!motif || motif.trim() === '') {
-    throw new BadRequestException('Le motif de refus administrateur est obligatoire');
-  }
-
-  cra.statut = CraStatus.REFUSE_ADMIN;
-  cra.date_refus_admin = new Date();
-  cra.motif_refus_admin = motif;
-
-  return this.craRepository.save(cra);
-}
 
   async remove(id: number): Promise<void> {
     const cra = await this.findOne(id);

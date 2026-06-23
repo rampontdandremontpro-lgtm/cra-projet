@@ -10,6 +10,7 @@ export class PdfService {
       const doc = new PDFDocument({
         size: 'A4',
         margin: 40,
+        bufferPages: true,
       });
 
       const buffers: Buffer[] = [];
@@ -17,24 +18,109 @@ export class PdfService {
       doc.on('data', (buffer) => buffers.push(buffer));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      const BLUE = '#0077C8';
+      const BLUE = '#35AEE2';
       const DARK_BLUE = '#0A64B7';
       const ORANGE = '#F39A00';
-      const LIGHT_BLUE = '#EAF4FF';
-      const LIGHT_ORANGE = '#FFF3E0';
       const GREEN = '#0FA958';
       const RED = '#D93025';
-      const GREY = '#F5F7FA';
+      const GREY = '#F8FAFC';
       const BORDER = '#D6E0EA';
 
       const pageWidth = doc.page.width;
+      const pageHeight = doc.page.height;
       const margin = 40;
       const contentWidth = pageWidth - margin * 2;
+      const footerHeight = 70;
+      const maxY = pageHeight - footerHeight - 30;
+
+      const months = [
+        '',
+        'Janvier',
+        'Février',
+        'Mars',
+        'Avril',
+        'Mai',
+        'Juin',
+        'Juillet',
+        'Août',
+        'Septembre',
+        'Octobre',
+        'Novembre',
+        'Décembre',
+      ];
+
+      const jours = [...(cra.jours || [])].sort((a, b) =>
+        String(a.date).localeCompare(String(b.date)),
+      );
+
+      const collaborateur = `${cra.collaborateur?.prenom ?? ''} ${cra.collaborateur?.nom ?? ''}`;
+      const client = cra.client?.nom ?? '-';
+      const periode = `${months[cra.mois]} ${cra.annee}`;
+      const reference = `CRA-${cra.annee}-${String(cra.mois).padStart(2, '0')}-${cra.id}`;
+
+      const formatDate = (date?: string | Date) => {
+        if (!date) return '-';
+
+        const d = new Date(date);
+
+        return d.toLocaleDateString('fr-FR');
+      };
+
+      const totalByType = (type: string) =>
+        jours
+          .filter((jour) => jour.type === type)
+          .reduce((total, jour) => total + Number(jour.duree), 0);
+
+      const totalTravail = totalByType('TRAVAIL');
+      const totalConges = totalByType('CONGE');
+      const totalAbsences = totalByType('ABSENCE');
+      const totalRtt = totalByType('RTT');
+
+      const drawHeader = () => {
+        const logoPath = path.join(
+          process.cwd(),
+          'src/pdf/assets/gmes-logo.jpg',
+        );
+
+        if (fs.existsSync(logoPath)) {
+          doc.image(logoPath, margin, 15, {
+            width: 70,
+          });
+        } else {
+          doc
+            .fillColor(BLUE)
+            .fontSize(24)
+            .font('Helvetica-Bold')
+            .text('GMES', margin, 25);
+        }
+
+        doc
+          .fillColor(DARK_BLUE)
+          .fontSize(9)
+          .font('Helvetica-Bold')
+          .text('DOCUMENT INTERNE', pageWidth - 200, 25, {
+            width: 160,
+            align: 'right',
+            lineBreak: false,
+          });
+
+        doc
+          .fillColor(ORANGE)
+          .fontSize(10)
+          .font('Helvetica-Bold')
+          .text(`Référence : ${reference}`, pageWidth - 220, 45, {
+            width: 180,
+            align: 'right',
+            lineBreak: false,
+          });
+
+        doc.rect(0, 88, pageWidth * 0.45, 3).fill(BLUE);
+        doc.rect(pageWidth * 0.45, 88, pageWidth * 0.3, 3).fill(ORANGE);
+        doc.rect(pageWidth * 0.75, 88, pageWidth * 0.25, 3).fill(BLUE);
+      };
 
       const drawSectionTitle = (title: string, y: number) => {
-        doc
-          .rect(margin, y, 4, 14)
-          .fill(ORANGE);
+        doc.rect(margin, y, 4, 14).fill(ORANGE);
 
         doc
           .fillColor(DARK_BLUE)
@@ -69,6 +155,43 @@ export class PdfService {
           .text(value, x + 15, y + 30);
       };
 
+      const addNewPage = () => {
+        doc.addPage();
+        drawHeader();
+
+        return 120;
+      };
+
+      const ensureSpace = (currentY: number, neededHeight: number) => {
+        if (currentY + neededHeight > maxY) {
+          return addNewPage();
+        }
+
+        return currentY;
+      };
+
+      const drawActivityTableHeader = (y: number) => {
+        const rowHeight = 26;
+        const colWidths = [95, 85, 70, contentWidth - 250];
+
+        doc.roundedRect(margin, y, contentWidth, rowHeight, 4).fill(BLUE);
+
+        doc
+          .fillColor('#FFFFFF')
+          .fontSize(8)
+          .font('Helvetica-Bold')
+          .text('DATE', margin + 10, y + 9)
+          .text('TYPE', margin + colWidths[0] + 10, y + 9)
+          .text('DURÉE (J)', margin + colWidths[0] + colWidths[1] + 10, y + 9)
+          .text(
+            'COMMENTAIRE',
+            margin + colWidths[0] + colWidths[1] + colWidths[2] + 10,
+            y + 9,
+          );
+
+        return y + rowHeight;
+      };
+
       const drawSummaryCard = (
         x: number,
         y: number,
@@ -78,9 +201,7 @@ export class PdfService {
         color: string,
         bg: string,
       ) => {
-        doc
-          .roundedRect(x, y, width, 55, 6)
-          .fillAndStroke(bg, BORDER);
+        doc.roundedRect(x, y, width, 55, 6).fillAndStroke(bg, BORDER);
 
         doc
           .fillColor(color)
@@ -101,97 +222,9 @@ export class PdfService {
           });
       };
 
-      const formatMonth = (mois: number, annee: number) => {
-        const months = [
-          'Janvier',
-          'Février',
-          'Mars',
-          'Avril',
-          'Mai',
-          'Juin',
-          'Juillet',
-          'Août',
-          'Septembre',
-          'Octobre',
-          'Novembre',
-          'Décembre',
-        ];
+      drawHeader();
 
-        return `${months[mois - 1]} ${annee}`;
-      };
-
-      const formatDate = (date?: string | Date) => {
-        if (!date) return '-';
-
-        const d = new Date(date);
-
-        return d.toLocaleDateString('fr-FR');
-      };
-
-      const jours = cra.jours || [];
-
-      const totalTravail = jours
-        .filter((j) => j.type === 'TRAVAIL')
-        .reduce((sum, j) => sum + Number(j.duree), 0);
-
-      const totalConges = jours
-        .filter((j) => j.type === 'CONGE')
-        .reduce((sum, j) => sum + Number(j.duree), 0);
-
-      const totalAbsences = jours
-        .filter((j) => j.type === 'ABSENCE')
-        .reduce((sum, j) => sum + Number(j.duree), 0);
-
-      const totalRtt = jours
-        .filter((j) => j.type === 'RTT')
-        .reduce((sum, j) => sum + Number(j.duree), 0);
-
-      const collaborateur = `${cra.collaborateur?.prenom ?? ''} ${cra.collaborateur?.nom ?? ''}`;
-      const client = cra.client?.nom ?? '-';
-      const periode = formatMonth(cra.mois, cra.annee);
-      const reference = `CRA-${cra.annee}-${String(cra.mois).padStart(2, '0')}-${cra.id}`;
-
-      // HEADER
-      const logoPath = path.join(process.cwd(), 'src/pdf/assets/gmes-logo.jpg');
-
-if (fs.existsSync(logoPath)) {
-  doc.image(logoPath, margin, 18, {
-  width: 70,
-});
-} else {
-  doc
-    .fillColor(BLUE)
-    .fontSize(24)
-    .font('Helvetica-Bold')
-    .text('GMES', margin, 25);
-}
-
-doc
-  .fillColor(DARK_BLUE)
-  .fontSize(9)
-  .font('Helvetica-Bold')
-  .text('DOCUMENT INTERNE', pageWidth - 200, 25, {
-    width: 160,
-    align: 'right',
-    lineBreak: false,
-  });
-
-doc
-  .fillColor(ORANGE)
-  .fontSize(10)
-  .font('Helvetica-Bold')
-  .text(`Référence : ${reference}`, pageWidth - 220, 45, {
-    width: 180,
-    align: 'right',
-    lineBreak: false,
-  });
-
-doc.rect(0, 74, pageWidth * 0.45, 3).fill(BLUE);
-doc.rect(pageWidth * 0.45, 74, pageWidth * 0.3, 3).fill(ORANGE);
-doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
-
-      // TITLE
-      let y = 105;
+      let y = 120;
 
       doc
         .fillColor(DARK_BLUE)
@@ -209,7 +242,6 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
 
       y += 30;
 
-      // INFO BOXES
       const boxWidth = contentWidth / 3;
 
       drawInfoBox(margin, y, boxWidth, 'Collaborateur', collaborateur);
@@ -218,41 +250,32 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
 
       y += 85;
 
-      // ACTIVITIES TABLE
       drawSectionTitle('DÉTAIL DES ACTIVITÉS', y);
       y += 28;
 
-      const tableX = margin;
-      const rowHeight = 28;
-      const colWidths = [110, 90, 80, contentWidth - 280];
+      y = drawActivityTableHeader(y);
 
-      doc
-        .roundedRect(tableX, y, contentWidth, rowHeight, 4)
-        .fill(BLUE);
+      const rowHeight = 25;
+      const colWidths = [95, 85, 70, contentWidth - 250];
 
-      doc
-        .fillColor('#FFFFFF')
-        .fontSize(8)
-        .font('Helvetica-Bold')
-        .text('DATE', tableX + 10, y + 10)
-        .text('TYPE', tableX + colWidths[0] + 10, y + 10)
-        .text('DURÉE (J)', tableX + colWidths[0] + colWidths[1] + 10, y + 10)
-        .text('COMMENTAIRE', tableX + colWidths[0] + colWidths[1] + colWidths[2] + 10, y + 10);
+      jours.forEach((jour, index) => {
+        y = ensureSpace(y, rowHeight + 30);
 
-      y += rowHeight;
+        if (y === 120) {
+          drawSectionTitle('DÉTAIL DES ACTIVITÉS - SUITE', y);
+          y += 28;
+          y = drawActivityTableHeader(y);
+        }
 
-      jours.slice(0, 8).forEach((jour, index) => {
         const bg = index % 2 === 0 ? '#FFFFFF' : GREY;
 
-        doc
-          .rect(tableX, y, contentWidth, rowHeight)
-          .fillAndStroke(bg, BORDER);
+        doc.rect(margin, y, contentWidth, rowHeight).fillAndStroke(bg, BORDER);
 
         doc
           .fillColor('#2C3E50')
           .fontSize(8)
           .font('Helvetica')
-          .text(formatDate(jour.date), tableX + 10, y + 9);
+          .text(formatDate(jour.date), margin + 10, y + 8);
 
         const typeColor =
           jour.type === 'CONGE'
@@ -260,31 +283,45 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
             : jour.type === 'ABSENCE'
               ? RED
               : jour.type === 'RTT'
-                ? GREEN
+                ? '#7C3AED'
                 : BLUE;
 
+        const typeBg =
+          jour.type === 'CONGE'
+            ? '#FFF3E0'
+            : jour.type === 'ABSENCE'
+              ? '#FFF0F0'
+              : jour.type === 'RTT'
+                ? '#F5F3FF'
+                : '#EAF4FF';
+
         doc
-          .roundedRect(tableX + colWidths[0] + 10, y + 7, 50, 14, 3)
-          .fill('#EAF4FF');
+          .roundedRect(margin + colWidths[0] + 10, y + 6, 58, 14, 3)
+          .fill(typeBg);
 
         doc
           .fillColor(typeColor)
           .fontSize(7)
           .font('Helvetica-Bold')
-          .text(jour.type, tableX + colWidths[0] + 15, y + 10);
+          .text(jour.type, margin + colWidths[0] + 15, y + 9);
 
         doc
           .fillColor('#2C3E50')
           .fontSize(8)
           .font('Helvetica')
-          .text(String(jour.duree), tableX + colWidths[0] + colWidths[1] + 25, y + 9);
+          .text(
+            String(jour.duree),
+            margin + colWidths[0] + colWidths[1] + 20,
+            y + 8,
+          );
 
         doc.text(
           jour.commentaire || '',
-          tableX + colWidths[0] + colWidths[1] + colWidths[2] + 10,
-          y + 9,
+          margin + colWidths[0] + colWidths[1] + colWidths[2] + 10,
+          y + 8,
           {
             width: colWidths[3] - 20,
+            lineBreak: false,
           },
         );
 
@@ -292,22 +329,56 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
       });
 
       y += 25;
+      y = ensureSpace(y, 230);
 
-      // SUMMARY
       drawSectionTitle('RÉCAPITULATIF DU MOIS', y);
       y += 28;
 
       const cardGap = 10;
       const cardWidth = (contentWidth - cardGap * 3) / 4;
 
-      drawSummaryCard(margin, y, cardWidth, totalTravail, 'Jours travaillés', BLUE, LIGHT_BLUE);
-      drawSummaryCard(margin + (cardWidth + cardGap), y, cardWidth, totalConges, 'Congés', ORANGE, LIGHT_ORANGE);
-      drawSummaryCard(margin + (cardWidth + cardGap) * 2, y, cardWidth, totalAbsences, 'Absences', RED, '#FFF0F0');
-      drawSummaryCard(margin + (cardWidth + cardGap) * 3, y, cardWidth, totalRtt, 'RTT', GREEN, '#EAFBF0');
+      drawSummaryCard(
+        margin,
+        y,
+        cardWidth,
+        totalTravail,
+        'Jours travaillés',
+        BLUE,
+        '#EAF4FF',
+      );
+
+      drawSummaryCard(
+        margin + (cardWidth + cardGap),
+        y,
+        cardWidth,
+        totalConges,
+        'Congés',
+        ORANGE,
+        '#FFF3E0',
+      );
+
+      drawSummaryCard(
+        margin + (cardWidth + cardGap) * 2,
+        y,
+        cardWidth,
+        totalAbsences,
+        'Absences',
+        RED,
+        '#FFF0F0',
+      );
+
+      drawSummaryCard(
+        margin + (cardWidth + cardGap) * 3,
+        y,
+        cardWidth,
+        totalRtt,
+        'RTT',
+        GREEN,
+        '#EAFBF0',
+      );
 
       y += 80;
 
-      // STATUS
       drawSectionTitle('STATUT & VALIDATION', y);
       y += 28;
 
@@ -319,7 +390,9 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
         .fillColor(GREEN)
         .fontSize(11)
         .font('Helvetica-Bold')
-        .text(cra.statut, margin + 20, y + 15);
+        .text(cra.statut, margin + 20, y + 15, {
+          lineBreak: false,
+        });
 
       doc
         .roundedRect(margin + 200, y, contentWidth - 200, 42, 6)
@@ -330,26 +403,34 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
         .fillColor('#5D6D7E')
         .fontSize(8)
         .font('Helvetica-Bold')
-        .text('VALIDATION CLIENT', margin + 215, y + 8);
+        .text('VALIDATION CLIENT', margin + 215, y + 8, {
+          lineBreak: false,
+        });
 
       doc
         .fillColor(DARK_BLUE)
         .fontSize(10)
-        .text(formatDate(cra.date_validation_client), margin + 215, y + 24);
+        .text(formatDate(cra.date_validation_client), margin + 215, y + 24, {
+          lineBreak: false,
+        });
 
       doc
         .fillColor('#5D6D7E')
         .fontSize(8)
-        .text('VALIDATION ADMINISTRATEUR', margin + 390, y + 8);
+        .text('VALIDATION ADMINISTRATEUR', margin + 390, y + 8, {
+          lineBreak: false,
+        });
 
       doc
         .fillColor(DARK_BLUE)
         .fontSize(10)
-        .text(formatDate(cra.date_validation_admin), margin + 390, y + 24);
+        .text(formatDate(cra.date_validation_admin), margin + 390, y + 24, {
+          lineBreak: false,
+        });
 
       y += 70;
+      y = ensureSpace(y, 115);
 
-      // SIGNATURES
       drawSectionTitle('SIGNATURES', y);
       y += 28;
 
@@ -365,13 +446,19 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
           .fillColor('#5D6D7E')
           .fontSize(8)
           .font('Helvetica-Bold')
-          .text(title.toUpperCase(), x + 10, y + 10);
+          .text(title.toUpperCase(), x + 10, y + 10, {
+            width: sigWidth - 20,
+            lineBreak: false,
+          });
 
         doc
           .fillColor(DARK_BLUE)
           .fontSize(9)
           .font('Helvetica-Bold')
-          .text(name, x + 10, y + 26);
+          .text(name, x + 10, y + 26, {
+            width: sigWidth - 20,
+            lineBreak: false,
+          });
 
         doc
           .moveTo(x + 10, y + 52)
@@ -383,43 +470,68 @@ doc.rect(pageWidth * 0.75, 74, pageWidth * 0.25, 3).fill(BLUE);
           .fillColor('#7F8C8D')
           .fontSize(7)
           .font('Helvetica')
-          .text('Signature & date', x + 10, y + 56);
+          .text('Signature & date', x + 10, y + 56, {
+            width: sigWidth - 20,
+            lineBreak: false,
+          });
       };
 
       drawSignature(margin, 'Collaborateur', collaborateur);
       drawSignature(margin + sigWidth + 10, 'Représentant client', client);
-      drawSignature(margin + (sigWidth + 10) * 2, 'Administrateur', 'Proxima Conseil');
+      drawSignature(
+        margin + (sigWidth + 10) * 2,
+        'Administrateur',
+        'Proxima Conseil',
+      );
 
-      // FOOTER
-const footerY = 790;
+      const range = doc.bufferedPageRange();
 
-doc.rect(0, footerY, pageWidth, 52).fill(BLUE);
-doc.rect(0, footerY - 3, pageWidth, 3).fill(ORANGE);
+for (let i = 0; i < range.count; i++) {
+  doc.switchToPage(i);
 
-doc
-  .fillColor('#FFFFFF')
-  .fontSize(8)
-  .font('Helvetica')
-  .text('PROXIMA CONSEIL — Document confidentiel', margin, footerY + 22, {
-    lineBreak: false,
-  });
+  const footerY = pageHeight - 58;
 
-doc.text(`${reference} — Page 1/1`, 250, footerY + 22, {
-  lineBreak: false,
-});
+  doc.rect(0, footerY, pageWidth, 58).fill(BLUE);
+  doc.rect(0, footerY - 3, pageWidth, 3).fill(ORANGE);
 
-doc.text(
-  `Généré le ${new Date().toLocaleDateString('fr-FR')}`,
-  pageWidth - 170,
-  footerY + 22,
-  {
-    width: 130,
-    align: 'right',
-    lineBreak: false,
-  },
-);
+  doc
+    .fillColor('#FFFFFF')
+    .fontSize(7)
+    .font('Helvetica')
+    .text(
+      'PROXIMA CONSEIL — Document confidentiel',
+      margin,
+      footerY + 22,
+      {
+        width: 190,
+        lineBreak: false,
+      },
+    );
 
-doc.end();
+  doc.text(
+    `${reference} — Page ${i + 1}/${range.count}`,
+    230,
+    footerY + 22,
+    {
+      width: 150,
+      align: 'center',
+      lineBreak: false,
+    },
+  );
+
+  doc.text(
+    `Généré le ${new Date().toLocaleDateString('fr-FR')}`,
+    pageWidth - 180,
+    footerY + 22,
+    {
+      width: 140,
+      align: 'right',
+      lineBreak: false,
+    },
+  );
+}
+
+      doc.end();
     });
   }
 }

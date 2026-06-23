@@ -1,5 +1,14 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinTable,
+  ManyToMany,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Cra } from '../cra/cra.entity';
+import { Client } from '../clients/client.entity';
 
 export enum UserRole {
   COLLABORATEUR = 'COLLABORATEUR',
@@ -39,4 +48,10 @@ export class User {
 
   @OneToMany(() => Cra, (cra) => cra.collaborateur)
   cra: Cra[];
+
+  @ManyToMany(() => Client, (client) => client.collaborateurs)
+  @JoinTable({
+    name: 'collaborateur_clients',
+  })
+  clients: Client[];
 }

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -24,14 +25,14 @@ export class CraController {
   constructor(private readonly craService: CraService) {}
 
   @Post()
-  create(@Body() createCraDto: CreateCraDto) {
-    return this.craService.create(createCraDto);
-  }
+create(@Body() createCraDto: CreateCraDto, @Req() req) {
+  return this.craService.create(createCraDto, req.user.sub);
+}
 
-  @Get()
-  findAll() {
-    return this.craService.findAll();
-  }
+@Get()
+findAll(@Req() req) {
+  return this.craService.findByCollaborateur(req.user.sub);
+}
 
   @Get(':id')
   findOne(@Param('id') id: string) {
