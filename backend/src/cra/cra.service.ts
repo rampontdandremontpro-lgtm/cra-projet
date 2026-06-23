@@ -210,6 +210,31 @@ if (declaredDays !== workingDays) {
   return this.craRepository.save(cra);
 }
 
+async checkCraBeforeSubmit(createCraDto: CreateCraDto) {
+  const workingDays = await this.calculateWorkingDays(
+    createCraDto.mois,
+    createCraDto.annee,
+  );
+
+  const declaredDays = (createCraDto.jours || [])
+    .filter((jour) =>
+      ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
+    )
+    .reduce((total, jour) => total + Number(jour.duree), 0);
+
+  if (declaredDays !== workingDays) {
+    throw new BadRequestException(
+      `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
+    );
+  }
+
+  return {
+    message: 'CRA cohérent',
+    declaredDays,
+    workingDays,
+  };
+}
+
 async validateClient(id: number): Promise<Cra> {
   const cra = await this.findOne(id);
 

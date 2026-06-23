@@ -46,6 +46,11 @@ export class CraController {
     return this.craService.update(Number(id), updateCraDto);
   }
 
+  @Post('check')
+checkCraBeforeSubmit(@Body() createCraDto: CreateCraDto) {
+  return this.craService.checkCraBeforeSubmit(createCraDto);
+}
+
   @Post(':id/submit')
 submit(@Param('id') id: string) {
   return this.craService.submit(Number(id));
