@@ -1,12 +1,12 @@
-// src/pages/admin/AdminUsersPage.jsx
+// src/pages/rh/RhAssignmentsPage.jsx
 import Sidebar from '../../components/layout/Sidebar';
 
-export default function AdminUsersPage() {
+export default function RhAssignmentsPage() {
   return (
     <div className="dashboard-page">
       <Sidebar />
       <main className="dashboard-content">
-        <h1>Gestion utilisateurs</h1>
+        <h1>Affectations collaborateur / client</h1>
       </main>
     </div>
   );

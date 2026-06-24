@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import { loginUser } from '../../services/authApi';
 import { useAuth } from '../../context/AuthContext';
+import { getDashboardPathByRole } from '../../utils/roleRedirect';
+
 import '../../styles/auth.css';
 
 export default function LoginPage() {
@@ -13,8 +16,8 @@ export default function LoginPage() {
     password: '',
   });
 
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => {
     setForm({
@@ -30,20 +33,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await loginUser(
-        form.email,
-        form.password,
-      );
+      const response = await loginUser(form.email, form.password);
 
-      login(
-        response.user,
-        response.access_token,
-      );
+      login(response.user, response.access_token);
 
-      navigate('/dashboard');
+      navigate(getDashboardPathByRole(response.user.role));
     } catch (err) {
       console.error(err);
-
       setError('Email ou mot de passe incorrect.');
     } finally {
       setLoading(false);
@@ -64,29 +60,18 @@ export default function LoginPage() {
 
         <div className="auth-header">
           <h2>Connexion</h2>
-
-          <p>
-            Connectez-vous pour accéder à votre espace CRA.
-          </p>
+          <p>Connectez-vous pour accéder à votre espace CRA.</p>
         </div>
 
-        {error && (
-          <div className="auth-error">
-            {error}
-          </div>
-        )}
+        {error && <div className="auth-error">{error}</div>}
 
-        <form
-          onSubmit={handleSubmit}
-          className="auth-form"
-        >
+        <form onSubmit={handleSubmit} className="auth-form">
           <label>
             Email
-
             <input
               type="email"
               name="email"
-              placeholder="exemple@email.fr"
+              placeholder="exemple@gmes.fr"
               value={form.email}
               onChange={handleChange}
               required
@@ -95,7 +80,6 @@ export default function LoginPage() {
 
           <label>
             Mot de passe
-
             <input
               type="password"
               name="password"
@@ -106,13 +90,8 @@ export default function LoginPage() {
             />
           </label>
 
-          <button
-            type="submit"
-            disabled={loading}
-          >
-            {loading
-              ? 'Connexion...'
-              : 'Se connecter'}
+          <button type="submit" disabled={loading}>
+            {loading ? 'Connexion...' : 'Connexion'}
           </button>
         </form>
       </section>

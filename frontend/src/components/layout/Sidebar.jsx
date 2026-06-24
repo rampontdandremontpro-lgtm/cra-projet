@@ -1,9 +1,50 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+
 import { useAuth } from '../../context/AuthContext';
 
+import '../../styles/layout.css';
+
+const menuByRole = {
+  COLLABORATEUR: [
+    { label: 'Tableau de bord', path: '/dashboard' },
+    { label: 'Mes CRA', path: '/mes-cra' },
+    { label: 'Nouveau CRA', path: '/nouveau-cra' },
+  ],
+
+  CLIENT: [
+    { label: 'Tableau de bord', path: '/client/dashboard' },
+    { label: 'CRA à valider', path: '/client/cra-a-valider' },
+    { label: 'Historique', path: '/client/historique' },
+  ],
+
+  RH: [
+    { label: 'Tableau de bord RH', path: '/rh/dashboard' },
+    { label: 'Collaborateurs', path: '/rh/collaborateurs' },
+    { label: 'Clients', path: '/rh/clients' },
+    { label: 'Affectations', path: '/rh/affectations' },
+  ],
+
+  ADMIN: [
+    { label: 'Tableau de bord Admin', path: '/admin/dashboard' },
+    { label: 'Utilisateurs', path: '/admin/utilisateurs' },
+    { label: 'Clients', path: '/admin/clients' },
+    { label: 'Jours fériés', path: '/admin/jours-feries' },
+    { label: 'Statistiques', path: '/admin/statistiques' },
+  ],
+};
+
+const roleLabels = {
+  COLLABORATEUR: 'COLLABORATEUR',
+  CLIENT: 'CLIENT',
+  RH: 'RH',
+  ADMIN: 'ADMIN',
+};
+
 export default function Sidebar() {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const menuItems = menuByRole[user?.role] || [];
 
   const handleLogout = () => {
     logout();
@@ -22,32 +63,17 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        <NavLink
-          to="/dashboard"
-          className={({ isActive }) =>
-            isActive ? 'sidebar-link active' : 'sidebar-link'
-          }
-        >
-          Tableau de bord
-        </NavLink>
-
-        <NavLink
-          to="/mes-cra"
-          className={({ isActive }) =>
-            isActive ? 'sidebar-link active' : 'sidebar-link'
-          }
-        >
-          Mes CRA
-        </NavLink>
-
-        <NavLink
-          to="/nouveau-cra"
-          className={({ isActive }) =>
-            isActive ? 'sidebar-link active' : 'sidebar-link'
-          }
-        >
-          Nouveau CRA
-        </NavLink>
+        {menuItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              isActive ? 'sidebar-link active' : 'sidebar-link'
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
       </nav>
 
       <div className="sidebar-user">
@@ -55,9 +81,9 @@ export default function Sidebar() {
           {user?.prenom} {user?.nom}
         </strong>
 
-        <span>{user?.role}</span>
+        <span>{roleLabels[user?.role] || user?.role}</span>
 
-        <button onClick={handleLogout}>
+        <button type="button" onClick={handleLogout}>
           Déconnexion
         </button>
       </div>
