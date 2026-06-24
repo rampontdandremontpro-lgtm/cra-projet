@@ -1,0 +1,16 @@
+.sidebar-link {
+  display: block;
+  padding: 14px 16px;
+  color: white;
+  text-decoration: none;
+  border-radius: 12px;
+  transition: 0.2s;
+}
+
+.sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-link.active {
+  background: rgba(255, 255, 255, 0.12);
+}
