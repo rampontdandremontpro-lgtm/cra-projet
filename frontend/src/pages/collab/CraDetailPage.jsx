@@ -11,6 +11,16 @@ import {
   getCraPdf,
 } from '../../services/craApi';
 
+import {
+  buildDateFromDay,
+  calculateCraTotals,
+  createEmptyCraDay,
+  getDayFromDate,
+  getLastDayOfMonth,
+  getMonthName,
+  getStatusLabel,
+} from '../../utils/craUtils';
+
 import '../../styles/dashboard.css';
 import '../../styles/cra.css';
 
@@ -30,14 +40,14 @@ export default function CraDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (error || success) {
-      const timer = setTimeout(() => {
-        setError('');
-        setSuccess('');
-      }, 5000);
+    if (!error && !success) return;
 
-      return () => clearTimeout(timer);
-    }
+    const timer = setTimeout(() => {
+      setError('');
+      setSuccess('');
+    }, 5000);
+
+    return () => clearTimeout(timer);
   }, [error, success]);
 
   const loadCra = async () => {
@@ -58,62 +68,7 @@ export default function CraDetailPage() {
     cra?.statut === 'REFUSE_CLIENT' ||
     cra?.statut === 'REFUSE_ADMIN';
 
-  const totals = useMemo(() => {
-    return jours.reduce(
-      (acc, jour) => {
-        const duree = Number(jour.duree || 0);
-
-        acc.total += duree;
-        if (jour.type === 'TRAVAIL') acc.travail += duree;
-        if (jour.type === 'CONGE') acc.conge += duree;
-        if (jour.type === 'ABSENCE') acc.absence += duree;
-        if (jour.type === 'RTT') acc.rtt += duree;
-
-        return acc;
-      },
-      { total: 0, travail: 0, conge: 0, absence: 0, rtt: 0 }
-    );
-  }, [jours]);
-
-  const getMonthName = (monthNumber) =>
-    [
-      '',
-      'Janvier',
-      'Février',
-      'Mars',
-      'Avril',
-      'Mai',
-      'Juin',
-      'Juillet',
-      'Août',
-      'Septembre',
-      'Octobre',
-      'Novembre',
-      'Décembre',
-    ][monthNumber];
-
-  const getStatusLabel = (statut) => {
-    const labels = {
-      BROUILLON: 'Brouillon',
-      SOUMIS_CLIENT: 'Soumis au client',
-      VALIDE_CLIENT: 'Validé client',
-      VALIDE_ADMIN: 'Validé admin',
-      REFUSE_CLIENT: 'Refusé client',
-      REFUSE_ADMIN: 'Refusé admin',
-    };
-
-    return labels[statut] || statut;
-  };
-
-  const getLastDayOfMonth = () => {
-    if (!cra) return 31;
-    return new Date(cra.annee, cra.mois, 0).getDate();
-  };
-
-  const getDayFromDate = (date) => {
-    if (!date) return '';
-    return Number(date.split('-')[2]);
-  };
+  const totals = useMemo(() => calculateCraTotals(jours), [jours]);
 
   const handleDayChange = (index, field, value) => {
     const updatedDays = [...jours];
@@ -133,27 +88,15 @@ export default function CraDetailPage() {
     }
 
     const day = Number(value);
+    const lastDay = getLastDayOfMonth(cra.annee, cra.mois);
 
-    if (day < 1 || day > getLastDayOfMonth()) {
-      return;
-    }
+    if (day < 1 || day > lastDay) return;
 
-    const month = String(cra.mois).padStart(2, '0');
-    const formattedDay = String(day).padStart(2, '0');
-
-    handleDayChange(index, 'date', `${cra.annee}-${month}-${formattedDay}`);
+    handleDayChange(index, 'date', buildDateFromDay(day, cra.mois, cra.annee));
   };
 
   const addDay = () => {
-    setJours([
-      ...jours,
-      {
-        date: '',
-        type: 'TRAVAIL',
-        duree: 1,
-        commentaire: '',
-      },
-    ]);
+    setJours([...jours, createEmptyCraDay()]);
   };
 
   const removeDay = (index) => {
@@ -208,7 +151,6 @@ export default function CraDetailPage() {
       navigate('/mes-cra');
     } catch (err) {
       console.error(err);
-
       setError(
         err.response?.data?.message ||
           'Impossible de soumettre le CRA. Vérifie les jours déclarés.'
@@ -247,6 +189,7 @@ export default function CraDetailPage() {
     return (
       <div className="dashboard-page">
         <Sidebar />
+
         <main className="dashboard-content">
           <p className="empty-text">Chargement du CRA...</p>
         </main>
@@ -258,6 +201,7 @@ export default function CraDetailPage() {
     return (
       <div className="dashboard-page">
         <Sidebar />
+
         <main className="dashboard-content">
           <p className="empty-text">CRA introuvable.</p>
         </main>
@@ -272,6 +216,7 @@ export default function CraDetailPage() {
       <main className="dashboard-content">
         <div className="cra-page-title">
           <p className="breadcrumb">Mes CRA / Détail CRA</p>
+
           <h1>
             CRA — {getMonthName(cra.mois)} {cra.annee}
           </h1>
@@ -362,7 +307,7 @@ export default function CraDetailPage() {
                         <option value="">jj</option>
 
                         {Array.from(
-                          { length: getLastDayOfMonth() },
+                          { length: getLastDayOfMonth(cra.annee, cra.mois) },
                           (_, i) => i + 1
                         ).map((day) => (
                           <option key={day} value={day}>
@@ -486,6 +431,7 @@ export default function CraDetailPage() {
           <aside className="cra-side-panel">
             <section className="side-card">
               <h3>Statut</h3>
+
               <strong
                 className={`status-side status-${cra.statut.toLowerCase()}`}
               >

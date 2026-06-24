@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -10,6 +14,15 @@ import { Client } from '../clients/client.entity';
 import { CreateCraDto } from './dto/create-cra.dto';
 import { UpdateCraDto } from './dto/update-cra.dto';
 import { PdfService } from '../pdf/pdf.service';
+
+type CraDayInput = {
+  date: string;
+  type: string;
+  duree: number;
+  commentaire?: string;
+};
+
+const DECLARABLE_DAY_TYPES = ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'];
 
 @Injectable()
 export class CraService {
@@ -29,6 +42,56 @@ export class CraService {
     private readonly pdfService: PdfService,
   ) {}
 
+  private async getCollaborateur(userId: number): Promise<User> {
+    const collaborateur = await this.usersRepository.findOne({
+      where: { id: userId },
+    });
+
+    if (!collaborateur) {
+      throw new NotFoundException('Collaborateur introuvable');
+    }
+
+    return collaborateur;
+  }
+
+  private async getClient(clientId: number): Promise<Client> {
+    const client = await this.clientsRepository.findOne({
+      where: { id: clientId },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Client introuvable');
+    }
+
+    return client;
+  }
+
+  private async ensureClientAssignedToCollaborateur(
+    collaborateurId: number,
+    clientId: number,
+  ): Promise<void> {
+    const collaborateur = await this.usersRepository.findOne({
+      where: { id: collaborateurId },
+      relations: {
+        clients: true,
+      },
+    });
+
+    if (!collaborateur) {
+      throw new NotFoundException('Collaborateur introuvable');
+    }
+
+    const isAssigned = collaborateur.clients.some(
+      (client) => client.id === clientId,
+    );
+
+    if (!isAssigned) {
+      throw new BadRequestException(
+        'Ce client n’est pas assigné à ce collaborateur.',
+      );
+    }
+  }
+
   private async getMartiniqueHolidays(annee: number): Promise<string[]> {
     const response = await fetch(
       'https://calendrier.api.gouv.fr/jours-feries/martinique.json',
@@ -41,70 +104,77 @@ export class CraService {
     );
   }
 
+  private validateCraYear(annee: number): void {
+    const currentYear = new Date().getFullYear();
+
+    if (!Number.isInteger(annee) || String(annee).length !== 4) {
+      throw new BadRequestException(
+        "L'année du CRA doit contenir exactement 4 chiffres.",
+      );
+    }
+
+    if (annee !== currentYear) {
+      throw new BadRequestException(
+        `L'année du CRA doit être ${currentYear}.`,
+      );
+    }
+  }
+
   private async validateCraDaysDates(
-  jours: { date: string; type: string; duree: number; commentaire?: string }[],
-  mois: number,
-  annee: number,
-): Promise<void> {
-  const currentYear = new Date().getFullYear();
+    jours: CraDayInput[],
+    mois: number,
+    annee: number,
+  ): Promise<void> {
+    this.validateCraYear(annee);
 
-  if (annee !== currentYear) {
-    throw new BadRequestException(
-      `L'année du CRA doit être ${currentYear}.`,
-    );
-  }
+    const holidays = await this.getMartiniqueHolidays(annee);
 
-  if (!Number.isInteger(annee) || String(annee).length !== 4) {
-    throw new BadRequestException(
-      "L'année du CRA doit contenir exactement 4 chiffres.",
-    );
-  }
+    for (const jour of jours || []) {
+      if (!jour.date) continue;
 
-  for (const jour of jours || []) {
-    if (!jour.date) continue;
+      const [year, month, day] = jour.date.split('-').map(Number);
 
-    const [year, month, day] = jour.date.split('-').map(Number);
+      if (year !== annee) {
+        throw new BadRequestException(
+          `La date ${jour.date} ne correspond pas à l'année du CRA.`,
+        );
+      }
 
-    if (year !== annee) {
-      throw new BadRequestException(
-        `La date ${jour.date} ne correspond pas à l'année du CRA.`,
-      );
-    }
+      if (month !== mois) {
+        throw new BadRequestException(
+          `La date ${jour.date} ne correspond pas au mois du CRA.`,
+        );
+      }
 
-    if (month !== mois) {
-      throw new BadRequestException(
-        `La date ${jour.date} ne correspond pas au mois du CRA.`,
-      );
-    }
+      const date = new Date(Date.UTC(year, month - 1, day));
+      const dayOfWeek = date.getUTCDay();
 
-    const date = new Date(Date.UTC(year, month - 1, day));
-    const dayOfWeek = date.getUTCDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        throw new BadRequestException(
+          `La date ${jour.date} est un week-end et ne peut pas être déclarée dans le CRA.`,
+        );
+      }
 
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      throw new BadRequestException(
-        `La date ${jour.date} est un week-end et ne peut pas être déclarée dans le CRA.`,
-      );
-    }
-
-    const holidays = await this.getMartiniqueHolidays(year);
-
-    if (holidays.includes(jour.date)) {
-      throw new BadRequestException(
-        `La date ${jour.date} est un jour férié et ne peut pas être déclarée dans le CRA.`,
-      );
+      if (holidays.includes(jour.date)) {
+        throw new BadRequestException(
+          `La date ${jour.date} est un jour férié et ne peut pas être déclarée dans le CRA.`,
+        );
+      }
     }
   }
-}
 
-  private async calculateWorkingDays(mois: number, annee: number): Promise<number> {
+  private async calculateWorkingDays(
+    mois: number,
+    annee: number,
+  ): Promise<number> {
     let workingDays = 0;
 
     const holidays = await this.getMartiniqueHolidays(annee);
     const daysInMonth = new Date(annee, mois, 0).getDate();
 
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(annee, mois - 1, day);
-      const dayOfWeek = date.getDay();
+      const date = new Date(Date.UTC(annee, mois - 1, day));
+      const dayOfWeek = date.getUTCDay();
       const formattedDate = date.toISOString().split('T')[0];
 
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -118,12 +188,39 @@ export class CraService {
     return workingDays;
   }
 
-  private calculateDeclaredDays(cra: Cra): number {
-    return cra.jours
-      .filter((jour) =>
-        ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
-      )
+  private calculateDeclaredDaysFromDays(jours: CraDayInput[]): number {
+    return (jours || [])
+      .filter((jour) => DECLARABLE_DAY_TYPES.includes(jour.type))
       .reduce((total, jour) => total + Number(jour.duree), 0);
+  }
+
+  private calculateDeclaredDays(cra: Cra): number {
+    return this.calculateDeclaredDaysFromDays(cra.jours);
+  }
+
+  private async validateCraCoherence(
+    jours: CraDayInput[],
+    mois: number,
+    annee: number,
+  ): Promise<{
+    declaredDays: number;
+    workingDays: number;
+  }> {
+    await this.validateCraDaysDates(jours, mois, annee);
+
+    const workingDays = await this.calculateWorkingDays(mois, annee);
+    const declaredDays = this.calculateDeclaredDaysFromDays(jours);
+
+    if (declaredDays !== workingDays) {
+      throw new BadRequestException(
+        `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
+      );
+    }
+
+    return {
+      declaredDays,
+      workingDays,
+    };
   }
 
   async generatePdf(id: number): Promise<Buffer> {
@@ -133,52 +230,18 @@ export class CraService {
 
   async create(createCraDto: CreateCraDto, userId: number): Promise<Cra> {
     await this.validateCraDaysDates(
-  createCraDto.jours || [],
-  createCraDto.mois,
-  createCraDto.annee,
-);
+      createCraDto.jours || [],
+      createCraDto.mois,
+      createCraDto.annee,
+    );
 
-    const collaborateur = await this.usersRepository.findOne({
-  where: { id: userId },
-});
+    const collaborateur = await this.getCollaborateur(userId);
+    const client = await this.getClient(createCraDto.client_id);
 
-    if (!collaborateur) {
-      throw new NotFoundException('Collaborateur introuvable');
-    }
-
-    const client = await this.clientsRepository.findOne({
-  where: { id: createCraDto.client_id },
-});
-
-if (!client) {
-  throw new NotFoundException('Client introuvable');
-}
-
-const collaborateurWithClients =
-  await this.usersRepository.findOne({
-    where: {
-      id: collaborateur.id,
-    },
-    relations: {
-      clients: true,
-    },
-  });
-
-if (!collaborateurWithClients) {
-  throw new NotFoundException('Collaborateur introuvable');
-}
-
-const isAssigned =
-  collaborateurWithClients.clients.some(
-    (assignedClient) =>
-      assignedClient.id === client.id,
-  );
-
-if (!isAssigned) {
-  throw new BadRequestException(
-    'Ce client n’est pas assigné à ce collaborateur.',
-  );
-}
+    await this.ensureClientAssignedToCollaborateur(
+      collaborateur.id,
+      client.id,
+    );
 
     const cra = this.craRepository.create({
       collaborateur,
@@ -194,35 +257,35 @@ if (!isAssigned) {
   }
 
   findAll(): Promise<Cra[]> {
-  return this.craRepository.find({
-    relations: {
-      collaborateur: true,
-      client: true,
-      jours: true,
-    },
-    order: {
-      created_at: 'DESC',
-    },
-  });
-}
-
-findByCollaborateur(userId: number): Promise<Cra[]> {
-  return this.craRepository.find({
-    where: {
-      collaborateur: {
-        id: userId,
+    return this.craRepository.find({
+      relations: {
+        collaborateur: true,
+        client: true,
+        jours: true,
       },
-    },
-    relations: {
-      collaborateur: true,
-      client: true,
-      jours: true,
-    },
-    order: {
-      created_at: 'DESC',
-    },
-  });
-}
+      order: {
+        created_at: 'DESC',
+      },
+    });
+  }
+
+  findByCollaborateur(userId: number): Promise<Cra[]> {
+    return this.craRepository.find({
+      where: {
+        collaborateur: {
+          id: userId,
+        },
+      },
+      relations: {
+        collaborateur: true,
+        client: true,
+        jours: true,
+      },
+      order: {
+        created_at: 'DESC',
+      },
+    });
+  }
 
   async findOne(id: number): Promise<Cra> {
     const cra = await this.craRepository.findOne({
@@ -241,39 +304,34 @@ findByCollaborateur(userId: number): Promise<Cra[]> {
     return cra;
   }
 
+  async findOneForUser(id: number, userId: number): Promise<Cra> {
+  const cra = await this.findOne(id);
+
+  if (cra.collaborateur.id !== userId) {
+    throw new NotFoundException('CRA introuvable');
+  }
+
+  return cra;
+}
+
   async update(id: number, updateCraDto: UpdateCraDto): Promise<Cra> {
     const cra = await this.findOne(id);
 
+    const mois = updateCraDto.mois ?? cra.mois;
+    const annee = updateCraDto.annee ?? cra.annee;
+
     if (updateCraDto.jours) {
-      await this.validateCraDaysDates(
-  updateCraDto.jours,
-  updateCraDto.mois ?? cra.mois,
-  updateCraDto.annee ?? cra.annee,
-);
+      await this.validateCraDaysDates(updateCraDto.jours, mois, annee);
     }
 
     if (updateCraDto.collaborateur_id) {
-      const collaborateur = await this.usersRepository.findOne({
-        where: { id: updateCraDto.collaborateur_id },
-      });
-
-      if (!collaborateur) {
-        throw new NotFoundException('Collaborateur introuvable');
-      }
-
-      cra.collaborateur = collaborateur;
+      cra.collaborateur = await this.getCollaborateur(
+        updateCraDto.collaborateur_id,
+      );
     }
 
     if (updateCraDto.client_id) {
-      const client = await this.clientsRepository.findOne({
-        where: { id: updateCraDto.client_id },
-      });
-
-      if (!client) {
-        throw new NotFoundException('Client introuvable');
-      }
-
-      cra.client = client;
+      cra.client = await this.getClient(updateCraDto.client_id);
     }
 
     if (updateCraDto.mois !== undefined) cra.mois = updateCraDto.mois;
@@ -291,6 +349,16 @@ findByCollaborateur(userId: number): Promise<Cra[]> {
     return this.craRepository.save(cra);
   }
 
+  async updateForUser(
+  id: number,
+  updateCraDto: UpdateCraDto,
+  userId: number,
+): Promise<Cra> {
+  await this.findOneForUser(id, userId);
+
+  return this.update(id, updateCraDto);
+}
+
   async submit(id: number): Promise<Cra> {
     const cra = await this.findOne(id);
 
@@ -302,16 +370,7 @@ findByCollaborateur(userId: number): Promise<Cra[]> {
       throw new BadRequestException('Ce CRA ne peut pas être soumis');
     }
 
-    await this.validateCraDaysDates(cra.jours || [], cra.mois, cra.annee);
-
-    const workingDays = await this.calculateWorkingDays(cra.mois, cra.annee);
-    const declaredDays = this.calculateDeclaredDays(cra);
-
-    if (declaredDays !== workingDays) {
-      throw new BadRequestException(
-        `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
-      );
-    }
+    await this.validateCraCoherence(cra.jours || [], cra.mois, cra.annee);
 
     cra.statut = CraStatus.SOUMIS_CLIENT;
     cra.date_soumission = new Date();
@@ -320,33 +379,15 @@ findByCollaborateur(userId: number): Promise<Cra[]> {
   }
 
   async checkCraBeforeSubmit(createCraDto: CreateCraDto) {
-    await this.validateCraDaysDates(
-  createCraDto.jours || [],
-  createCraDto.mois,
-  createCraDto.annee,
-);
-
-    const workingDays = await this.calculateWorkingDays(
+    const result = await this.validateCraCoherence(
+      createCraDto.jours || [],
       createCraDto.mois,
       createCraDto.annee,
     );
 
-    const declaredDays = (createCraDto.jours || [])
-      .filter((jour) =>
-        ['TRAVAIL', 'CONGE', 'ABSENCE', 'RTT'].includes(jour.type),
-      )
-      .reduce((total, jour) => total + Number(jour.duree), 0);
-
-    if (declaredDays !== workingDays) {
-      throw new BadRequestException(
-        `CRA incohérent : ${declaredDays} jour(s) déclaré(s) pour ${workingDays} jour(s) ouvré(s).`,
-      );
-    }
-
     return {
       message: 'CRA cohérent',
-      declaredDays,
-      workingDays,
+      ...result,
     };
   }
 
@@ -422,8 +463,9 @@ findByCollaborateur(userId: number): Promise<Cra[]> {
     return this.craRepository.save(cra);
   }
 
-  async remove(id: number): Promise<void> {
-    const cra = await this.findOne(id);
-    await this.craRepository.remove(cra);
-  }
+  async removeForUser(id: number, userId: number): Promise<void> {
+  const cra = await this.findOneForUser(id, userId);
+
+  await this.craRepository.remove(cra);
+}
 }

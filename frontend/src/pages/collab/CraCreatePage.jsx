@@ -6,6 +6,14 @@ import Sidebar from '../../components/layout/Sidebar';
 import { checkCra, createCra, submitCra } from '../../services/craApi';
 import { getAssignedClients } from '../../services/usersApi';
 
+import {
+  buildDateFromDay,
+  calculateCraTotals,
+  createEmptyCraDay,
+  getDayFromDate,
+  getLastDayOfMonth,
+} from '../../utils/craUtils';
+
 import '../../styles/cra.css';
 import '../../styles/dashboard.css';
 
@@ -22,7 +30,7 @@ export default function CraCreatePage() {
     client_id: '',
     mois: currentMonth,
     annee: currentYear,
-    jours: [{ date: '', type: 'TRAVAIL', duree: 1, commentaire: '' }],
+    jours: [createEmptyCraDay()],
   });
 
   const [loading, setLoading] = useState(false);
@@ -30,10 +38,10 @@ export default function CraCreatePage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(''), 5000);
-      return () => clearTimeout(timer);
-    }
+    if (!error) return;
+
+    const timer = setTimeout(() => setError(''), 5000);
+    return () => clearTimeout(timer);
   }, [error]);
 
   useEffect(() => {
@@ -62,22 +70,10 @@ export default function CraCreatePage() {
     loadClients();
   }, [user]);
 
-  const totals = useMemo(() => {
-    return form.jours.reduce(
-      (acc, jour) => {
-        const duree = Number(jour.duree || 0);
-
-        acc.total += duree;
-        if (jour.type === 'TRAVAIL') acc.travail += duree;
-        if (jour.type === 'CONGE') acc.conge += duree;
-        if (jour.type === 'ABSENCE') acc.absence += duree;
-        if (jour.type === 'RTT') acc.rtt += duree;
-
-        return acc;
-      },
-      { total: 0, travail: 0, conge: 0, absence: 0, rtt: 0 }
-    );
-  }, [form.jours]);
+  const totals = useMemo(
+    () => calculateCraTotals(form.jours),
+    [form.jours]
+  );
 
   const handleMonthChange = (e) => {
     const mois = Number(e.target.value);
@@ -86,7 +82,7 @@ export default function CraCreatePage() {
       ...form,
       mois,
       annee: currentYear,
-      jours: [{ date: '', type: 'TRAVAIL', duree: 1, commentaire: '' }],
+      jours: [createEmptyCraDay()],
     });
   };
 
@@ -108,15 +104,6 @@ export default function CraCreatePage() {
     setForm({ ...form, jours: updatedDays });
   };
 
-  const getLastDayOfMonth = () => {
-    return new Date(form.annee, form.mois, 0).getDate();
-  };
-
-  const getDayFromDate = (date) => {
-    if (!date) return '';
-    return Number(date.split('-')[2]);
-  };
-
   const handleDayNumberChange = (index, value) => {
     if (!value) {
       handleDayChange(index, 'date', '');
@@ -124,22 +111,21 @@ export default function CraCreatePage() {
     }
 
     const day = Number(value);
+    const lastDay = getLastDayOfMonth(form.annee, form.mois);
 
-    if (day < 1 || day > getLastDayOfMonth()) return;
+    if (day < 1 || day > lastDay) return;
 
-    const month = String(form.mois).padStart(2, '0');
-    const formattedDay = String(day).padStart(2, '0');
-
-    handleDayChange(index, 'date', `${form.annee}-${month}-${formattedDay}`);
+    handleDayChange(
+      index,
+      'date',
+      buildDateFromDay(day, form.mois, form.annee)
+    );
   };
 
   const addDay = () => {
     setForm({
       ...form,
-      jours: [
-        ...form.jours,
-        { date: '', type: 'TRAVAIL', duree: 1, commentaire: '' },
-      ],
+      jours: [...form.jours, createEmptyCraDay()],
     });
   };
 
@@ -257,7 +243,11 @@ export default function CraCreatePage() {
 
                 <label>
                   Mois
-                  <select name="mois" value={form.mois} onChange={handleMonthChange}>
+                  <select
+                    name="mois"
+                    value={form.mois}
+                    onChange={handleMonthChange}
+                  >
                     <option value={1}>Janvier</option>
                     <option value={2}>Février</option>
                     <option value={3}>Mars</option>
@@ -311,7 +301,7 @@ export default function CraCreatePage() {
                         <option value="">jj</option>
 
                         {Array.from(
-                          { length: getLastDayOfMonth() },
+                          { length: getLastDayOfMonth(form.annee, form.mois) },
                           (_, i) => i + 1
                         ).map((day) => (
                           <option key={day} value={day}>
