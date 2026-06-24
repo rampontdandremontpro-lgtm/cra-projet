@@ -13,6 +13,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+class AssignClientsDto {
+  clientIds: number[];
+}
+
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
@@ -37,6 +41,22 @@ export class UsersController {
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(Number(id), updateUserDto);
   }
+
+  @Get(':id/clients')
+getAssignedClients(@Param('id') id: string) {
+  return this.usersService.getAssignedClients(Number(id));
+}
+
+@Post(':id/clients')
+assignClients(
+  @Param('id') id: string,
+  @Body() body: AssignClientsDto,
+) {
+  return this.usersService.assignClients(
+    Number(id),
+    body.clientIds,
+  );
+}
 
   @Delete(':id')
   remove(@Param('id') id: string) {

@@ -147,12 +147,38 @@ export class CraService {
     }
 
     const client = await this.clientsRepository.findOne({
-      where: { id: createCraDto.client_id },
-    });
+  where: { id: createCraDto.client_id },
+});
 
-    if (!client) {
-      throw new NotFoundException('Client introuvable');
-    }
+if (!client) {
+  throw new NotFoundException('Client introuvable');
+}
+
+const collaborateurWithClients =
+  await this.usersRepository.findOne({
+    where: {
+      id: collaborateur.id,
+    },
+    relations: {
+      clients: true,
+    },
+  });
+
+if (!collaborateurWithClients) {
+  throw new NotFoundException('Collaborateur introuvable');
+}
+
+const isAssigned =
+  collaborateurWithClients.clients.some(
+    (assignedClient) =>
+      assignedClient.id === client.id,
+  );
+
+if (!isAssigned) {
+  throw new BadRequestException(
+    'Ce client n’est pas assigné à ce collaborateur.',
+  );
+}
 
     const cra = this.craRepository.create({
       collaborateur,
