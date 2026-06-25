@@ -19,7 +19,7 @@ export class CraDay {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Cra, (cra) => cra.jours, {
+  @ManyToOne(() => Cra, (cra) => cra.days, {
     nullable: false,
     onDelete: 'CASCADE',
   })

@@ -9,6 +9,9 @@ import { HolidaysModule } from './holidays/holidays.module';
 import { AuthModule } from './auth/auth.module';
 import { PdfModule } from './pdf/pdf.module';
 import { StatsModule } from './stats/stats.module';
+import { CompaniesModule } from './companies/companies.module';
+import { ServicesModule } from './services/services.module';
+import { CollaboratorAssignmentsModule } from './collaborator-assignments/collaborator-assignments.module';
 
 @Module({
   imports: [
@@ -34,6 +37,9 @@ import { StatsModule } from './stats/stats.module';
     AuthModule,
     PdfModule,
     StatsModule,
+    CompaniesModule,
+    ServicesModule,
+    CollaboratorAssignmentsModule,
   ],
 })
 export class AppModule {}

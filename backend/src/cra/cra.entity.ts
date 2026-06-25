@@ -7,9 +7,10 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+
 import { User } from '../users/user.entity';
-import { Client } from '../clients/client.entity';
 import { CraDay } from './cra-day.entity';
+import { AppServiceEntity } from '../services/service.entity';
 
 export enum CraStatus {
   BROUILLON = 'BROUILLON',
@@ -26,11 +27,21 @@ export class Cra {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => User, (user) => user.cra, { nullable: false })
+  @Column()
+  collaborateur_id: number;
+
+  @ManyToOne(() => User, (user) => user.cra, {
+    nullable: false,
+  })
   collaborateur: User;
 
-  @ManyToOne(() => Client, (client) => client.cra, { nullable: false })
-  client: Client;
+  @Column()
+  service_id: number;
+
+  @ManyToOne(() => AppServiceEntity, {
+    nullable: false,
+  })
+  service: AppServiceEntity;
 
   @Column()
   mois: number;
@@ -46,30 +57,54 @@ export class Cra {
   statut: CraStatus;
 
   @Column({ type: 'datetime', nullable: true })
-  date_soumission: Date;
+  date_soumission: Date | null;
 
   @Column({ type: 'datetime', nullable: true })
-  date_validation_client: Date;
+  date_validation_client: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+client_validator_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  client_validator: User | null;
 
   @Column({ type: 'datetime', nullable: true })
-  date_refus_client: Date;
+  date_refus_client: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  client_refuser_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  client_refuser: User | null;
 
   @Column({ type: 'text', nullable: true })
-  motif_refus_client: string;
+  motif_refus_client: string | null;
 
   @Column({ type: 'datetime', nullable: true })
-  date_validation_admin: Date;
+  date_validation_admin: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+admin_validator_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  admin_validator: User | null;
 
   @Column({ type: 'datetime', nullable: true })
-  date_refus_admin: Date;
+  date_refus_admin: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+admin_refuser_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  admin_refuser: User | null;
 
   @Column({ type: 'text', nullable: true })
-  motif_refus_admin: string;
+  motif_refus_admin: string | null;
 
-  @OneToMany(() => CraDay, (craDay) => craDay.cra, {
+  @OneToMany(() => CraDay, (day) => day.cra, {
     cascade: true,
   })
-  jours: CraDay[];
+  days: CraDay[];
 
   @CreateDateColumn()
   created_at: Date;

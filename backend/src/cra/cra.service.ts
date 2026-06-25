@@ -9,7 +9,7 @@ import { Repository } from 'typeorm';
 import { Cra, CraStatus } from './cra.entity';
 import { CraDay } from './cra-day.entity';
 import { User } from '../users/user.entity';
-import { Client } from '../clients/client.entity';
+import { CollaboratorAssignment } from '../collaborator-assignments/collaborator-assignment.entity';
 
 import { CreateCraDto } from './dto/create-cra.dto';
 import { UpdateCraDto } from './dto/update-cra.dto';
@@ -36,8 +36,8 @@ export class CraService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
 
-    @InjectRepository(Client)
-    private readonly clientsRepository: Repository<Client>,
+    @InjectRepository(CollaboratorAssignment)
+    private readonly assignmentRepository: Repository<CollaboratorAssignment>,
 
     private readonly pdfService: PdfService,
   ) {}
@@ -54,42 +54,28 @@ export class CraService {
     return collaborateur;
   }
 
-  private async getClient(clientId: number): Promise<Client> {
-    const client = await this.clientsRepository.findOne({
-      where: { id: clientId },
-    });
-
-    if (!client) {
-      throw new NotFoundException('Client introuvable');
-    }
-
-    return client;
-  }
-
-  private async ensureClientAssignedToCollaborateur(
+  private async getActiveAssignment(
     collaborateurId: number,
-    clientId: number,
-  ): Promise<void> {
-    const collaborateur = await this.usersRepository.findOne({
-      where: { id: collaborateurId },
+  ): Promise<CollaboratorAssignment> {
+    const assignment = await this.assignmentRepository.findOne({
+      where: {
+        collaborateur_id: collaborateurId,
+        is_active: true,
+      },
       relations: {
-        clients: true,
+        service: {
+          company: true,
+        },
       },
     });
 
-    if (!collaborateur) {
-      throw new NotFoundException('Collaborateur introuvable');
-    }
-
-    const isAssigned = collaborateur.clients.some(
-      (client) => client.id === clientId,
-    );
-
-    if (!isAssigned) {
+    if (!assignment) {
       throw new BadRequestException(
-        'Ce client n’est pas assigné à ce collaborateur.',
+        'Ce collaborateur n’a aucune affectation active.',
       );
     }
+
+    return assignment;
   }
 
   private async getMartiniqueHolidays(annee: number): Promise<string[]> {
@@ -114,9 +100,7 @@ export class CraService {
     }
 
     if (annee !== currentYear) {
-      throw new BadRequestException(
-        `L'année du CRA doit être ${currentYear}.`,
-      );
+      throw new BadRequestException(`L'année du CRA doit être ${currentYear}.`);
     }
   }
 
@@ -195,7 +179,7 @@ export class CraService {
   }
 
   private calculateDeclaredDays(cra: Cra): number {
-    return this.calculateDeclaredDaysFromDays(cra.jours);
+    return this.calculateDeclaredDaysFromDays(cra.days || []);
   }
 
   private async validateCraCoherence(
@@ -236,19 +220,16 @@ export class CraService {
     );
 
     const collaborateur = await this.getCollaborateur(userId);
-    const client = await this.getClient(createCraDto.client_id);
-
-    await this.ensureClientAssignedToCollaborateur(
-      collaborateur.id,
-      client.id,
-    );
+    const assignment = await this.getActiveAssignment(collaborateur.id);
 
     const cra = this.craRepository.create({
+      collaborateur_id: collaborateur.id,
       collaborateur,
-      client,
+      service_id: assignment.service_id,
+      service: assignment.service,
       mois: createCraDto.mois,
       annee: createCraDto.annee,
-      jours: createCraDto.jours?.map((jour) =>
+      days: createCraDto.jours?.map((jour) =>
         this.craDayRepository.create(jour),
       ),
     });
@@ -260,8 +241,10 @@ export class CraService {
     return this.craRepository.find({
       relations: {
         collaborateur: true,
-        client: true,
-        jours: true,
+        service: {
+          company: true,
+        },
+        days: true,
       },
       order: {
         created_at: 'DESC',
@@ -272,14 +255,14 @@ export class CraService {
   findByCollaborateur(userId: number): Promise<Cra[]> {
     return this.craRepository.find({
       where: {
-        collaborateur: {
-          id: userId,
-        },
+        collaborateur_id: userId,
       },
       relations: {
         collaborateur: true,
-        client: true,
-        jours: true,
+        service: {
+          company: true,
+        },
+        days: true,
       },
       order: {
         created_at: 'DESC',
@@ -292,8 +275,14 @@ export class CraService {
       where: { id },
       relations: {
         collaborateur: true,
-        client: true,
-        jours: true,
+        service: {
+          company: true,
+        },
+        days: true,
+        client_validator: true,
+        client_refuser: true,
+        admin_validator: true,
+        admin_refuser: true,
       },
     });
 
@@ -305,14 +294,14 @@ export class CraService {
   }
 
   async findOneForUser(id: number, userId: number): Promise<Cra> {
-  const cra = await this.findOne(id);
+    const cra = await this.findOne(id);
 
-  if (cra.collaborateur.id !== userId) {
-    throw new NotFoundException('CRA introuvable');
+    if (cra.collaborateur_id !== userId) {
+      throw new NotFoundException('CRA introuvable');
+    }
+
+    return cra;
   }
-
-  return cra;
-}
 
   async update(id: number, updateCraDto: UpdateCraDto): Promise<Cra> {
     const cra = await this.findOne(id);
@@ -324,16 +313,6 @@ export class CraService {
       await this.validateCraDaysDates(updateCraDto.jours, mois, annee);
     }
 
-    if (updateCraDto.collaborateur_id) {
-      cra.collaborateur = await this.getCollaborateur(
-        updateCraDto.collaborateur_id,
-      );
-    }
-
-    if (updateCraDto.client_id) {
-      cra.client = await this.getClient(updateCraDto.client_id);
-    }
-
     if (updateCraDto.mois !== undefined) cra.mois = updateCraDto.mois;
     if (updateCraDto.annee !== undefined) cra.annee = updateCraDto.annee;
     if (updateCraDto.statut !== undefined) cra.statut = updateCraDto.statut;
@@ -341,7 +320,7 @@ export class CraService {
     if (updateCraDto.jours) {
       await this.craDayRepository.delete({ cra: { id: cra.id } });
 
-      cra.jours = updateCraDto.jours.map((jour) =>
+      cra.days = updateCraDto.jours.map((jour) =>
         this.craDayRepository.create(jour),
       );
     }
@@ -350,14 +329,14 @@ export class CraService {
   }
 
   async updateForUser(
-  id: number,
-  updateCraDto: UpdateCraDto,
-  userId: number,
-): Promise<Cra> {
-  await this.findOneForUser(id, userId);
+    id: number,
+    updateCraDto: UpdateCraDto,
+    userId: number,
+  ): Promise<Cra> {
+    await this.findOneForUser(id, userId);
 
-  return this.update(id, updateCraDto);
-}
+    return this.update(id, updateCraDto);
+  }
 
   async submit(id: number): Promise<Cra> {
     const cra = await this.findOne(id);
@@ -370,7 +349,7 @@ export class CraService {
       throw new BadRequestException('Ce CRA ne peut pas être soumis');
     }
 
-    await this.validateCraCoherence(cra.jours || [], cra.mois, cra.annee);
+    await this.validateCraCoherence(cra.days || [], cra.mois, cra.annee);
 
     cra.statut = CraStatus.SOUMIS_CLIENT;
     cra.date_soumission = new Date();
@@ -391,7 +370,7 @@ export class CraService {
     };
   }
 
-  async validateClient(id: number): Promise<Cra> {
+  async validateClient(id: number, userId?: number): Promise<Cra> {
     const cra = await this.findOne(id);
 
     if (cra.statut !== CraStatus.SOUMIS_CLIENT) {
@@ -403,10 +382,14 @@ export class CraService {
     cra.statut = CraStatus.VALIDE_CLIENT;
     cra.date_validation_client = new Date();
 
+    if (userId) {
+      cra.client_validator_id = userId;
+    }
+
     return this.craRepository.save(cra);
   }
 
-  async refuseClient(id: number, motif: string): Promise<Cra> {
+  async refuseClient(id: number, motif: string, userId?: number): Promise<Cra> {
     const cra = await this.findOne(id);
 
     if (cra.statut !== CraStatus.SOUMIS_CLIENT) {
@@ -423,10 +406,14 @@ export class CraService {
     cra.date_refus_client = new Date();
     cra.motif_refus_client = motif;
 
+    if (userId) {
+      cra.client_refuser_id = userId;
+    }
+
     return this.craRepository.save(cra);
   }
 
-  async validateAdmin(id: number): Promise<Cra> {
+  async validateAdmin(id: number, userId?: number): Promise<Cra> {
     const cra = await this.findOne(id);
 
     if (cra.statut !== CraStatus.VALIDE_CLIENT) {
@@ -438,10 +425,14 @@ export class CraService {
     cra.statut = CraStatus.VALIDE_ADMIN;
     cra.date_validation_admin = new Date();
 
+    if (userId) {
+      cra.admin_validator_id = userId;
+    }
+
     return this.craRepository.save(cra);
   }
 
-  async refuseAdmin(id: number, motif: string): Promise<Cra> {
+  async refuseAdmin(id: number, motif: string, userId?: number): Promise<Cra> {
     const cra = await this.findOne(id);
 
     if (cra.statut !== CraStatus.VALIDE_CLIENT) {
@@ -460,12 +451,16 @@ export class CraService {
     cra.date_refus_admin = new Date();
     cra.motif_refus_admin = motif;
 
+    if (userId) {
+      cra.admin_refuser_id = userId;
+    }
+
     return this.craRepository.save(cra);
   }
 
   async removeForUser(id: number, userId: number): Promise<void> {
-  const cra = await this.findOneForUser(id, userId);
+    const cra = await this.findOneForUser(id, userId);
 
-  await this.craRepository.remove(cra);
-}
+    await this.craRepository.remove(cra);
+  }
 }

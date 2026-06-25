@@ -6,7 +6,6 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Cra } from '../cra/cra.entity';
 import { User } from '../users/user.entity';
 
 @Entity('clients')
@@ -28,9 +27,6 @@ export class Client {
 
   @CreateDateColumn()
   created_at: Date;
-
-  @OneToMany(() => Cra, (cra) => cra.client)
-  cra: Cra[];
 
   @ManyToMany(() => User, (user) => user.clients)
   collaborateurs: User[];
