@@ -2,15 +2,16 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  ManyToOne,
+  JoinColumn,
   OneToMany,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
+import { Service } from '../services/service.entity';
 import { User } from '../users/user.entity';
 import { CraDay } from './cra-day.entity';
-import { AppServiceEntity } from '../services/service.entity';
 
 export enum CraStatus {
   BROUILLON = 'BROUILLON',
@@ -27,88 +28,89 @@ export class Cra {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  collaborateur_id: number;
-
-  @ManyToOne(() => User, (user) => user.cra, {
+  @ManyToOne(() => User, {
     nullable: false,
+    onDelete: 'RESTRICT',
   })
+  @JoinColumn({ name: 'collaborateur_id' })
   collaborateur: User;
 
-  @Column()
-  service_id: number;
-
-  @ManyToOne(() => AppServiceEntity, {
+  @ManyToOne(() => Service, {
     nullable: false,
+    onDelete: 'RESTRICT',
   })
-  service: AppServiceEntity;
+  @JoinColumn({ name: 'service_id' })
+  service: Service;
 
-  @Column()
+  @Column({ type: 'int', nullable: false })
   mois: number;
 
-  @Column()
+  @Column({ type: 'int', nullable: false })
   annee: number;
 
   @Column({
     type: 'enum',
     enum: CraStatus,
+    nullable: false,
     default: CraStatus.BROUILLON,
   })
   statut: CraStatus;
 
-  @Column({ type: 'datetime', nullable: true })
-  date_soumission: Date | null;
+  @Column({ name: 'date_soumission', type: 'datetime', nullable: true })
+  dateSoumission: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
-  date_validation_client: Date | null;
+  @Column({ name: 'date_validation_client', type: 'datetime', nullable: true })
+  dateValidationClient: Date | null;
 
-  @Column({ type: 'int', nullable: true })
-client_validator_id: number | null;
-
-  @ManyToOne(() => User, { nullable: true })
-  client_validator: User | null;
-
-  @Column({ type: 'datetime', nullable: true })
-  date_refus_client: Date | null;
-
-  @Column({ type: 'int', nullable: true })
-  client_refuser_id: number | null;
-
-  @ManyToOne(() => User, { nullable: true })
-  client_refuser: User | null;
-
-  @Column({ type: 'text', nullable: true })
-  motif_refus_client: string | null;
-
-  @Column({ type: 'datetime', nullable: true })
-  date_validation_admin: Date | null;
-
-  @Column({ type: 'int', nullable: true })
-admin_validator_id: number | null;
-
-  @ManyToOne(() => User, { nullable: true })
-  admin_validator: User | null;
-
-  @Column({ type: 'datetime', nullable: true })
-  date_refus_admin: Date | null;
-
-  @Column({ type: 'int', nullable: true })
-admin_refuser_id: number | null;
-
-  @ManyToOne(() => User, { nullable: true })
-  admin_refuser: User | null;
-
-  @Column({ type: 'text', nullable: true })
-  motif_refus_admin: string | null;
-
-  @OneToMany(() => CraDay, (day) => day.cra, {
-    cascade: true,
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'SET NULL',
   })
+  @JoinColumn({ name: 'client_validator_id' })
+  clientValidator: User | null;
+
+  @Column({ name: 'date_refus_client', type: 'datetime', nullable: true })
+  dateRefusClient: Date | null;
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'client_refuser_id' })
+  clientRefuser: User | null;
+
+  @Column({ name: 'motif_refus_client', type: 'text', nullable: true })
+  motifRefusClient: string | null;
+
+  @Column({ name: 'date_validation_admin', type: 'datetime', nullable: true })
+  dateValidationAdmin: Date | null;
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'admin_validator_id' })
+  adminValidator: User | null;
+
+  @Column({ name: 'date_refus_admin', type: 'datetime', nullable: true })
+  dateRefusAdmin: Date | null;
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'admin_refuser_id' })
+  adminRefuser: User | null;
+
+  @Column({ name: 'motif_refus_admin', type: 'text', nullable: true })
+  motifRefusAdmin: string | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime' })
+  updatedAt: Date;
+
+  @OneToMany(() => CraDay, (day) => day.cra)
   days: CraDay[];
-
-  @CreateDateColumn()
-  created_at: Date;
-
-  @UpdateDateColumn()
-  updated_at: Date;
 }

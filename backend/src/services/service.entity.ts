@@ -2,33 +2,29 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
 import { Company } from '../companies/company.entity';
-import { User } from '../users/user.entity';
 
 @Entity('services')
-export class AppServiceEntity {
+export class Service {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  company_id: number;
-
-  @Column({ length: 150 })
-  nom: string;
-
-  @CreateDateColumn()
-  created_at: Date;
-
   @ManyToOne(() => Company, (company) => company.services, {
-    onDelete: 'CASCADE',
+    nullable: false,
+    onDelete: 'RESTRICT',
   })
+  @JoinColumn({ name: 'company_id' })
   company: Company;
 
-  @OneToMany(() => User, (user) => user.service)
-  users: User[];
+  @Column({ type: 'varchar', length: 150, nullable: false })
+  nom: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  createdAt: Date;
 }

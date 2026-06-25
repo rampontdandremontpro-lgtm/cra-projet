@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository } from 'typeorm';
 
-import { User, UserRole } from '../users/user.entity';
-import { Client } from '../clients/client.entity';
-import { Cra, CraStatus } from '../cra/cra.entity';
+import { Company } from '../companies/company.entity';
 import { CraDay, CraDayType } from '../cra/cra-day.entity';
+import { Cra, CraStatus } from '../cra/cra.entity';
+import { Service } from '../services/service.entity';
+import { User, ContractType, UserRole } from '../users/user.entity';
 
 @Injectable()
 export class StatsService {
@@ -13,70 +14,130 @@ export class StatsService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
 
-    @InjectRepository(Client)
-    private readonly clientsRepository: Repository<Client>,
+    @InjectRepository(Company)
+    private readonly companiesRepository: Repository<Company>,
+
+    @InjectRepository(Service)
+    private readonly servicesRepository: Repository<Service>,
 
     @InjectRepository(Cra)
     private readonly craRepository: Repository<Cra>,
 
     @InjectRepository(CraDay)
-    private readonly craDayRepository: Repository<CraDay>,
+    private readonly craDaysRepository: Repository<CraDay>,
   ) {}
 
-  async getDashboardStats() {
+  async getAdminStats() {
     const totalCollaborateurs = await this.usersRepository.count({
-      where: { role: UserRole.COLLABORATEUR },
-    });
-
-    const totalClients = await this.clientsRepository.count();
-
-    const totalCra = await this.craRepository.count();
-
-    const craBrouillons = await this.craRepository.count({
-      where: { statut: CraStatus.BROUILLON },
-    });
-
-    const craSoumisClient = await this.craRepository.count({
-      where: { statut: CraStatus.SOUMIS_CLIENT },
-    });
-
-    const craValidesClient = await this.craRepository.count({
-      where: { statut: CraStatus.VALIDE_CLIENT },
-    });
-
-    const craValidesAdmin = await this.craRepository.count({
-      where: { statut: CraStatus.VALIDE_ADMIN },
-    });
-
-    const craRefuses = await this.craRepository.count({
       where: {
-        statut: In([CraStatus.REFUSE_CLIENT, CraStatus.REFUSE_ADMIN]),
+        role: UserRole.COLLABORATEUR,
+        isActive: true,
       },
     });
 
-    const totalConges = await this.craDayRepository
-      .createQueryBuilder('day')
-      .select('SUM(day.duree)', 'total')
-      .where('day.type = :type', { type: CraDayType.CONGE })
-      .getRawOne();
+    const totalClients = await this.usersRepository.count({
+      where: {
+        role: UserRole.CLIENT,
+        isActive: true,
+      },
+    });
 
-    const totalAbsences = await this.craDayRepository
-      .createQueryBuilder('day')
-      .select('SUM(day.duree)', 'total')
-      .where('day.type = :type', { type: CraDayType.ABSENCE })
-      .getRawOne();
+    const totalRh = await this.usersRepository.count({
+      where: {
+        role: UserRole.RH,
+        isActive: true,
+      },
+    });
+
+    const totalCompanies = await this.companiesRepository.count({
+      where: {
+        isActive: true,
+      },
+    });
+
+    const totalServices = await this.servicesRepository.count();
+
+    const totalCra = await this.craRepository.count();
+
+    const craByStatus = await Promise.all(
+      Object.values(CraStatus).map(async (status) => ({
+        status,
+        total: await this.craRepository.count({
+          where: {
+            statut: status,
+          },
+        }),
+      })),
+    );
 
     return {
       totalCollaborateurs,
       totalClients,
+      totalRh,
+      totalCompanies,
+      totalServices,
       totalCra,
-      craBrouillons,
-      craSoumisClient,
-      craValidesClient,
-      craValidesAdmin,
-      craRefuses,
-      totalConges: Number(totalConges.total ?? 0),
-      totalAbsences: Number(totalAbsences.total ?? 0),
+      craByStatus,
+    };
+  }
+
+  async getRhStats() {
+    const totalCollaborateurs = await this.usersRepository.count({
+      where: {
+        role: UserRole.COLLABORATEUR,
+        isActive: true,
+      },
+    });
+
+    const collaborateursByContract = await Promise.all(
+      Object.values(ContractType).map(async (contractType) => ({
+        contractType,
+        total: await this.usersRepository.count({
+          where: {
+            role: UserRole.COLLABORATEUR,
+            contractType,
+            isActive: true,
+          },
+        }),
+      })),
+    );
+
+    const totalConges = await this.craDaysRepository
+      .createQueryBuilder('day')
+      .where('day.type = :type', { type: CraDayType.CONGE })
+      .select('SUM(day.duree)', 'total')
+      .getRawOne();
+
+    const totalAbsences = await this.craDaysRepository
+      .createQueryBuilder('day')
+      .where('day.type = :type', { type: CraDayType.ABSENCE })
+      .select('SUM(day.duree)', 'total')
+      .getRawOne();
+
+    const totalRtt = await this.craDaysRepository
+      .createQueryBuilder('day')
+      .where('day.type = :type', { type: CraDayType.RTT })
+      .select('SUM(day.duree)', 'total')
+      .getRawOne();
+
+    const craByStatus = await Promise.all(
+      Object.values(CraStatus).map(async (status) => ({
+        status,
+        total: await this.craRepository.count({
+          where: {
+            statut: status,
+          },
+        }),
+      })),
+    );
+
+    return {
+      totalCollaborateurs,
+      collaborateursByContract,
+      totalConges: Number(totalConges.total) || 0,
+      totalAbsences: Number(totalAbsences.total) || 0,
+      totalRtt: Number(totalRtt.total) || 0,
+      craByStatus,
     };
   }
 }

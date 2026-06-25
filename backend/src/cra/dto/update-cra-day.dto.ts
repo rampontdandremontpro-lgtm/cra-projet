@@ -1,7 +1,6 @@
 import {
   IsDateString,
   IsEnum,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,18 +10,20 @@ import {
 
 import { CraDayType } from '../cra-day.entity';
 
-export class CreateCraDayDto {
+export class UpdateCraDayDto {
+  @IsOptional()
   @IsDateString()
-  @IsNotEmpty()
-  date: string;
+  date?: string;
 
+  @IsOptional()
   @IsEnum(CraDayType)
-  type: CraDayType;
+  type?: CraDayType;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(1)
-  duree: number;
+  duree?: number;
 
   @IsOptional()
   @IsString()

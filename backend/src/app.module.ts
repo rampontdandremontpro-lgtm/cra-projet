@@ -2,16 +2,15 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { UsersModule } from './users/users.module';
-import { ClientsModule } from './clients/clients.module';
-import { CraModule } from './cra/cra.module';
-import { HolidaysModule } from './holidays/holidays.module';
 import { AuthModule } from './auth/auth.module';
-import { PdfModule } from './pdf/pdf.module';
-import { StatsModule } from './stats/stats.module';
+import { UsersModule } from './users/users.module';
 import { CompaniesModule } from './companies/companies.module';
 import { ServicesModule } from './services/services.module';
 import { CollaboratorAssignmentsModule } from './collaborator-assignments/collaborator-assignments.module';
+import { CraModule } from './cra/cra.module';
+import { HolidaysModule } from './holidays/holidays.module';
+import { StatsModule } from './stats/stats.module';
+import { PdfModule } from './pdf/pdf.module';
 
 @Module({
   imports: [
@@ -26,20 +25,20 @@ import { CollaboratorAssignmentsModule } from './collaborator-assignments/collab
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_DATABASE,
+
       autoLoadEntities: true,
       synchronize: true,
     }),
 
-    UsersModule,
-    ClientsModule,
-    CraModule,
-    HolidaysModule,
     AuthModule,
-    PdfModule,
-    StatsModule,
+    UsersModule,
     CompaniesModule,
     ServicesModule,
     CollaboratorAssignmentsModule,
+    CraModule,
+    HolidaysModule,
+    StatsModule,
+    PdfModule,
   ],
 })
 export class AppModule {}

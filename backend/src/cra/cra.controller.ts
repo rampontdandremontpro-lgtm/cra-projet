@@ -4,118 +4,175 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-
 import type { Response } from 'express';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { PdfService } from '../pdf/pdf.service';
+import { UserRole } from '../users/user.entity';
 import { CraService } from './cra.service';
 import { CreateCraDto } from './dto/create-cra.dto';
+import { RefuseCraDto } from './dto/refuse-cra.dto';
 import { UpdateCraDto } from './dto/update-cra.dto';
-import { ClientRefuseCraDto } from './dto/client-refuse-cra.dto';
-import { AdminRefuseCraDto } from './dto/admin-refuse-cra.dto';
 
-@UseGuards(JwtAuthGuard)
+type AuthenticatedRequest = {
+  user: {
+    id: number;
+    email: string;
+    role: UserRole;
+  };
+};
+
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('cra')
 export class CraController {
-  constructor(private readonly craService: CraService) {}
+  constructor(
+    private readonly craService: CraService,
+    private readonly pdfService: PdfService,
+  ) {}
 
-  @Post('check')
-  checkCraBeforeSubmit(@Body() createCraDto: CreateCraDto) {
-    return this.craService.checkCraBeforeSubmit(createCraDto);
-  }
-
+  @Roles(UserRole.COLLABORATEUR)
   @Post()
-  create(@Body() createCraDto: CreateCraDto, @Req() req) {
-    return this.craService.create(createCraDto, req.user.sub);
+  create(@Req() req: AuthenticatedRequest, @Body() createCraDto: CreateCraDto) {
+    return this.craService.create(req.user.id, createCraDto);
   }
 
+  @Roles(UserRole.RH, UserRole.ADMIN)
   @Get()
-  findAll(@Req() req) {
-    return this.craService.findByCollaborateur(req.user.sub);
+  findAll() {
+    return this.craService.findAll();
   }
 
+  @Roles(UserRole.COLLABORATEUR)
+  @Get('my')
+  findMyCra(@Req() req: AuthenticatedRequest) {
+    return this.craService.findByCollaborator(req.user.id);
+  }
+
+  @Roles(UserRole.CLIENT)
+  @Get('client')
+  findForClient(@Req() req: AuthenticatedRequest) {
+    return this.craService.findForClient(req.user.id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Get('admin/to-validate')
+  findForAdminValidation() {
+    return this.craService.findForAdminValidation();
+  }
+
+  @Roles(UserRole.COLLABORATEUR, UserRole.CLIENT, UserRole.RH, UserRole.ADMIN)
   @Get(':id/pdf')
-  async generatePdf(@Param('id') id: string, @Res() res: Response) {
-    const pdfBuffer = await this.craService.generatePdf(Number(id));
+  async downloadPdf(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const cra = await this.craService.findOneForUser(
+      id,
+      req.user.id,
+      req.user.role,
+    );
+
+    const pdfBuffer = await this.pdfService.generateCraPdf(cra);
+
+    const fileName = `CRA-${cra.annee}-${String(cra.mois).padStart(2, '0')}-${cra.id}.pdf`;
 
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="cra-${id}.pdf"`,
+      'Content-Disposition': `attachment; filename="${fileName}"`,
       'Content-Length': pdfBuffer.length,
     });
 
-    res.end(pdfBuffer);
+    return res.send(pdfBuffer);
   }
 
+  @Roles(UserRole.COLLABORATEUR, UserRole.CLIENT, UserRole.RH, UserRole.ADMIN)
   @Get(':id')
-findOne(@Param('id') id: string, @Req() req) {
-  return this.craService.findOneForUser(
-    Number(id),
-    req.user.sub,
-  );
-}
+  findOne(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.craService.findOneForUser(id, req.user.id, req.user.role);
+  }
 
-  @Patch(':id')
+  @Roles(UserRole.COLLABORATEUR)
+@Patch(':id')
 update(
-  @Param('id') id: string,
+  @Req() req: AuthenticatedRequest,
+  @Param('id', ParseIntPipe) id: number,
   @Body() updateCraDto: UpdateCraDto,
-  @Req() req,
 ) {
-  return this.craService.updateForUser(
-    Number(id),
-    updateCraDto,
-    req.user.sub,
-  );
+  return this.craService.update(id, req.user.id, updateCraDto);
 }
 
-  @Post(':id/submit')
-  submit(@Param('id') id: string) {
-    return this.craService.submit(Number(id));
+  @Roles(UserRole.COLLABORATEUR)
+@Post(':id/submit')
+submit(
+  @Req() req: AuthenticatedRequest,
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.craService.submit(id, req.user.id);
+}
+
+  @Roles(UserRole.CLIENT)
+  @Post(':id/client-validate')
+  validateClient(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.craService.validateClient(id, req.user.id);
   }
 
-  @Post(':id/validate-client')
-  validateClient(@Param('id') id: string) {
-    return this.craService.validateClient(Number(id));
-  }
-
-  @Post(':id/refuse-client')
+  @Roles(UserRole.CLIENT)
+  @Post(':id/client-refuse')
   refuseClient(
-    @Param('id') id: string,
-    @Body() clientRefuseCraDto: ClientRefuseCraDto,
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() refuseCraDto: RefuseCraDto,
   ) {
-    return this.craService.refuseClient(
-      Number(id),
-      clientRefuseCraDto.motif_refus_client,
-    );
+    return this.craService.refuseClient(id, req.user.id, refuseCraDto);
   }
 
-  @Post(':id/validate-admin')
-  validateAdmin(@Param('id') id: string) {
-    return this.craService.validateAdmin(Number(id));
+  @Roles(UserRole.ADMIN)
+  @Post(':id/admin-validate')
+  validateAdmin(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.craService.validateAdmin(id, req.user.id);
   }
 
-  @Post(':id/refuse-admin')
+  @Roles(UserRole.ADMIN)
+  @Post(':id/admin-refuse')
   refuseAdmin(
-    @Param('id') id: string,
-    @Body() adminRefuseCraDto: AdminRefuseCraDto,
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() refuseCraDto: RefuseCraDto,
   ) {
-    return this.craService.refuseAdmin(
-      Number(id),
-      adminRefuseCraDto.motif_refus_admin,
-    );
+    return this.craService.refuseAdmin(id, req.user.id, refuseCraDto);
   }
 
-  @Delete(':id')
-remove(@Param('id') id: string, @Req() req) {
-  return this.craService.removeForUser(
-    Number(id),
-    req.user.sub,
-  );
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/archive')
+  archive(@Req() req: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.craService.archive(id);
+  }
+
+  @Roles(UserRole.COLLABORATEUR)
+@Delete(':id')
+remove(
+  @Req() req: AuthenticatedRequest,
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.craService.remove(id, req.user.id);
 }
 }

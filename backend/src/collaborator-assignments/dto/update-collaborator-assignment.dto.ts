@@ -1,6 +1,19 @@
+import { IsBoolean, IsDateString, IsInt, IsOptional } from 'class-validator';
+
 export class UpdateCollaboratorAssignmentDto {
-  service_id?: number;
-  start_date?: Date;
-  end_date?: Date;
-  is_active?: boolean;
+  @IsOptional()
+  @IsInt()
+  serviceId?: number;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

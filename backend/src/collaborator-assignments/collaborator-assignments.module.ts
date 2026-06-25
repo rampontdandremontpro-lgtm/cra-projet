@@ -3,21 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CollaboratorAssignment } from './collaborator-assignment.entity';
 import { User } from '../users/user.entity';
-import { AppServiceEntity } from '../services/service.entity';
-
-import { CollaboratorAssignmentsController } from './collaborator-assignments.controller';
+import { Service } from '../services/service.entity';
 import { CollaboratorAssignmentsService } from './collaborator-assignments.service';
+import { CollaboratorAssignmentsController } from './collaborator-assignments.controller';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      CollaboratorAssignment,
-      User,
-      AppServiceEntity,
-    ]),
-  ],
+  imports: [TypeOrmModule.forFeature([CollaboratorAssignment, User, Service])],
   controllers: [CollaboratorAssignmentsController],
   providers: [CollaboratorAssignmentsService],
-  exports: [CollaboratorAssignmentsService, TypeOrmModule],
+  exports: [TypeOrmModule, CollaboratorAssignmentsService],
 })
 export class CollaboratorAssignmentsModule {}

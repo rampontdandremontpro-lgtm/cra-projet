@@ -1,8 +1,12 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import {
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
+import { Repository } from 'typeorm';
+
 import { User } from '../users/user.entity';
 import { LoginDto } from './dto/login.dto';
 
@@ -11,24 +15,36 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+
     private readonly jwtService: JwtService,
   ) {}
 
   async login(loginDto: LoginDto) {
     const user = await this.usersRepository.findOne({
-      where: { email: loginDto.email },
+      where: {
+        email: loginDto.email,
+      },
+      relations: {
+        service: {
+          company: true,
+        },
+      },
     });
 
     if (!user) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
-    const isPasswordValid = await bcrypt.compare(
+    if (!user.isActive) {
+      throw new UnauthorizedException('Ce compte est désactivé');
+    }
+
+    const passwordIsValid = await bcrypt.compare(
       loginDto.password,
       user.password,
     );
 
-    if (!isPasswordValid) {
+    if (!passwordIsValid) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
@@ -38,15 +54,47 @@ export class AuthService {
       role: user.role,
     };
 
+    const accessToken = await this.jwtService.signAsync(payload);
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: accessToken,
       user: {
         id: user.id,
         nom: user.nom,
         prenom: user.prenom,
         email: user.email,
         role: user.role,
+        contractType: user.contractType,
+        service: user.service,
       },
+    };
+  }
+
+  async me(userId: number) {
+    const user = await this.usersRepository.findOne({
+      where: {
+        id: userId,
+      },
+      relations: {
+        service: {
+          company: true,
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable');
+    }
+
+    return {
+      id: user.id,
+      nom: user.nom,
+      prenom: user.prenom,
+      email: user.email,
+      role: user.role,
+      contractType: user.contractType,
+      service: user.service,
+      isActive: user.isActive,
     };
   }
 }

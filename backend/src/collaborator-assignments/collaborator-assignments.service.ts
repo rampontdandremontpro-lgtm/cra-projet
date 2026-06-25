@@ -1,14 +1,14 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { Service } from '../services/service.entity';
+import { User, UserRole } from '../users/user.entity';
 import { CollaboratorAssignment } from './collaborator-assignment.entity';
-import { User } from '../users/user.entity';
-import { AppServiceEntity } from '../services/service.entity';
-
 import { CreateCollaboratorAssignmentDto } from './dto/create-collaborator-assignment.dto';
 import { UpdateCollaboratorAssignmentDto } from './dto/update-collaborator-assignment.dto';
 
@@ -16,116 +16,174 @@ import { UpdateCollaboratorAssignmentDto } from './dto/update-collaborator-assig
 export class CollaboratorAssignmentsService {
   constructor(
     @InjectRepository(CollaboratorAssignment)
-    private readonly assignmentRepository: Repository<CollaboratorAssignment>,
+    private readonly assignmentsRepository: Repository<CollaboratorAssignment>,
 
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private readonly usersRepository: Repository<User>,
 
-    @InjectRepository(AppServiceEntity)
-    private readonly serviceRepository: Repository<AppServiceEntity>,
+    @InjectRepository(Service)
+    private readonly servicesRepository: Repository<Service>,
   ) {}
 
-  findAll() {
-    return this.assignmentRepository.find({
-      relations: {
-        collaborateur: true,
-        service: {
-          company: true,
-        },
-        assignedBy: true,
-      },
-      order: {
-        created_at: 'DESC',
-      },
-    });
-  }
-
-  async findActiveByCollaborator(collaborateurId: number) {
-    return this.assignmentRepository.findOne({
-      where: {
-        collaborateur_id: collaborateurId,
-        is_active: true,
-      },
-      relations: {
-        service: {
-          company: true,
-        },
-      },
-    });
-  }
-
   async create(
-    dto: CreateCollaboratorAssignmentDto,
-    assignedByUserId: number,
-  ) {
-    const collaborateur = await this.userRepository.findOne({
-      where: {
-        id: dto.collaborateur_id,
-      },
+    createAssignmentDto: CreateCollaboratorAssignmentDto,
+  ): Promise<CollaboratorAssignment> {
+    const collaborator = await this.usersRepository.findOne({
+      where: { id: createAssignmentDto.collaboratorId },
     });
 
-    if (!collaborateur) {
-      throw new NotFoundException('Collaborateur introuvable.');
+    if (!collaborator) {
+      throw new NotFoundException('Collaborateur introuvable');
     }
 
-    const service = await this.serviceRepository.findOne({
-      where: {
-        id: dto.service_id,
-      },
+    if (collaborator.role !== UserRole.COLLABORATEUR) {
+      throw new BadRequestException(
+        'L’utilisateur sélectionné doit avoir le rôle COLLABORATEUR',
+      );
+    }
+
+    const assignedBy = await this.usersRepository.findOne({
+      where: { id: createAssignmentDto.assignedByUserId },
+    });
+
+    if (!assignedBy) {
+      throw new NotFoundException('Utilisateur RH introuvable');
+    }
+
+    if (assignedBy.role !== UserRole.RH && assignedBy.role !== UserRole.ADMIN) {
+      throw new BadRequestException(
+        'Seuls les RH ou les administrateurs peuvent affecter un collaborateur',
+      );
+    }
+
+    const service = await this.servicesRepository.findOne({
+      where: { id: createAssignmentDto.serviceId },
+      relations: { company: true },
     });
 
     if (!service) {
-      throw new NotFoundException('Service introuvable.');
+      throw new NotFoundException('Service introuvable');
     }
 
-    await this.assignmentRepository.update(
-      {
-        collaborateur_id: dto.collaborateur_id,
-        is_active: true,
+    const activeAssignments = await this.assignmentsRepository.find({
+      where: {
+        collaborator: { id: collaborator.id },
+        isActive: true,
       },
-      {
-        is_active: false,
-      },
-    );
-
-    const assignment = this.assignmentRepository.create({
-      collaborateur_id: dto.collaborateur_id,
-      service_id: dto.service_id,
-      assigned_by_user_id: assignedByUserId,
-      start_date: dto.start_date ?? null,
-      end_date: dto.end_date ?? null,
-      is_active: true,
     });
 
-    return this.assignmentRepository.save(assignment);
+    for (const assignment of activeAssignments) {
+      assignment.isActive = false;
+      assignment.endDate = createAssignmentDto.startDate;
+      await this.assignmentsRepository.save(assignment);
+    }
+
+    const newAssignment = this.assignmentsRepository.create({
+      collaborator,
+      service,
+      assignedBy,
+      startDate: createAssignmentDto.startDate,
+      endDate: null,
+      isActive: true,
+    });
+
+    return this.assignmentsRepository.save(newAssignment);
+  }
+
+  async findAll(): Promise<CollaboratorAssignment[]> {
+    return this.assignmentsRepository.find({
+      relations: {
+        collaborator: true,
+        service: { company: true },
+        assignedBy: true,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
+  async findOne(id: number): Promise<CollaboratorAssignment> {
+    const assignment = await this.assignmentsRepository.findOne({
+      where: { id },
+      relations: {
+        collaborator: true,
+        service: { company: true },
+        assignedBy: true,
+      },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException(`Affectation avec l'id ${id} introuvable`);
+    }
+
+    return assignment;
+  }
+
+  async findActiveByCollaborator(
+    collaboratorId: number,
+  ): Promise<CollaboratorAssignment> {
+    const assignment = await this.assignmentsRepository.findOne({
+      where: {
+        collaborator: { id: collaboratorId },
+        isActive: true,
+      },
+      relations: {
+        collaborator: true,
+        service: { company: true },
+        assignedBy: true,
+      },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException(
+        'Aucune affectation active trouvée pour ce collaborateur',
+      );
+    }
+
+    return assignment;
   }
 
   async update(
     id: number,
-    dto: UpdateCollaboratorAssignmentDto,
-  ) {
-    const assignment = await this.assignmentRepository.findOne({
-      where: { id },
-    });
+    updateAssignmentDto: UpdateCollaboratorAssignmentDto,
+  ): Promise<CollaboratorAssignment> {
+    const assignment = await this.findOne(id);
 
-    if (!assignment) {
-      throw new NotFoundException('Affectation introuvable.');
+    if (updateAssignmentDto.serviceId !== undefined) {
+      const service = await this.servicesRepository.findOne({
+        where: { id: updateAssignmentDto.serviceId },
+        relations: { company: true },
+      });
+
+      if (!service) {
+        throw new NotFoundException('Service introuvable');
+      }
+
+      assignment.service = service;
     }
 
-    Object.assign(assignment, dto);
+    if (updateAssignmentDto.startDate !== undefined) {
+      assignment.startDate = updateAssignmentDto.startDate;
+    }
 
-    return this.assignmentRepository.save(assignment);
+    if (updateAssignmentDto.endDate !== undefined) {
+      assignment.endDate = updateAssignmentDto.endDate;
+    }
+
+    if (updateAssignmentDto.isActive !== undefined) {
+      assignment.isActive = updateAssignmentDto.isActive;
+    }
+
+    return this.assignmentsRepository.save(assignment);
   }
 
-  async remove(id: number) {
-    const assignment = await this.assignmentRepository.findOne({
-      where: { id },
-    });
+  async disable(id: number): Promise<CollaboratorAssignment> {
+    const assignment = await this.findOne(id);
 
-    if (!assignment) {
-      throw new NotFoundException('Affectation introuvable.');
-    }
+    assignment.isActive = false;
+    assignment.endDate = new Date().toISOString().split('T')[0];
 
-    return this.assignmentRepository.remove(assignment);
+    return this.assignmentsRepository.save(assignment);
   }
 }

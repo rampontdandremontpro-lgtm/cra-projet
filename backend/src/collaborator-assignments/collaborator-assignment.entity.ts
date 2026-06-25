@@ -8,49 +8,43 @@ import {
 } from 'typeorm';
 
 import { User } from '../users/user.entity';
-import { AppServiceEntity } from '../services/service.entity';
+import { Service } from '../services/service.entity';
 
 @Entity('collaborator_assignments')
 export class CollaboratorAssignment {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  collaborateur_id: number;
-
-  @Column()
-  service_id: number;
-
-  @Column()
-  assigned_by_user_id: number;
-
-  @Column({ type: 'date', nullable: true })
-  start_date: Date | null;
-
-  @Column({ type: 'date', nullable: true })
-  end_date: Date | null;
-
-  @Column({ default: true })
-  is_active: boolean;
-
-  @CreateDateColumn()
-  created_at: Date;
-
   @ManyToOne(() => User, {
-    onDelete: 'CASCADE',
+    nullable: false,
+    onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'collaborateur_id' })
-  collaborateur: User;
+  @JoinColumn({ name: 'collaborator_id' })
+  collaborator: User;
 
-  @ManyToOne(() => AppServiceEntity, {
-    onDelete: 'CASCADE',
+  @ManyToOne(() => Service, {
+    nullable: false,
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'service_id' })
-  service: AppServiceEntity;
+  service: Service;
 
   @ManyToOne(() => User, {
-    onDelete: 'CASCADE',
+    nullable: false,
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'assigned_by_user_id' })
   assignedBy: User;
+
+  @Column({ name: 'start_date', type: 'date', nullable: false })
+  startDate: string;
+
+  @Column({ name: 'end_date', type: 'date', nullable: true })
+  endDate: string | null;
+
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  createdAt: Date;
 }

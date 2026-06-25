@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { Holiday } from './holiday.entity';
 import { HolidaysService } from './holidays.service';
 import { HolidaysController } from './holidays.controller';
@@ -8,5 +9,6 @@ import { HolidaysController } from './holidays.controller';
   imports: [TypeOrmModule.forFeature([Holiday])],
   controllers: [HolidaysController],
   providers: [HolidaysService],
+  exports: [TypeOrmModule, HolidaysService],
 })
 export class HolidaysModule {}

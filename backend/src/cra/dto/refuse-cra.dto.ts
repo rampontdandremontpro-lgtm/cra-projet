@@ -1,8 +1,8 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
-export class CreateCompanyDto {
+export class RefuseCraDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(150)
-  nom: string;
+  @MaxLength(1000)
+  motif: string;
 }

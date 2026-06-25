@@ -49,14 +49,30 @@ export class PdfService {
         'Décembre',
       ];
 
-      const jours = [...(cra.jours || [])].sort((a, b) =>
+      const jours = [...(cra.days || [])].sort((a, b) =>
         String(a.date).localeCompare(String(b.date)),
       );
 
-      const collaborateur = `${cra.collaborateur?.prenom ?? ''} ${cra.collaborateur?.nom ?? ''}`;
-      const client = cra.client?.nom ?? '-';
+      const collaborateur = `${cra.collaborateur?.prenom ?? ''} ${
+        cra.collaborateur?.nom ?? ''
+      }`.trim();
+
+      const entreprise = cra.service?.company?.nom ?? '-';
+      const service = cra.service?.nom ?? '-';
+
       const periode = `${months[cra.mois]} ${cra.annee}`;
-      const reference = `CRA-${cra.annee}-${String(cra.mois).padStart(2, '0')}-${cra.id}`;
+      const reference = `CRA-${cra.annee}-${String(cra.mois).padStart(
+        2,
+        '0',
+      )}-${cra.id}`;
+
+      const clientValidator = cra.clientValidator
+        ? `${cra.clientValidator.prenom ?? ''} ${cra.clientValidator.nom ?? ''}`.trim()
+        : '-';
+
+      const adminValidator = cra.adminValidator
+        ? `${cra.adminValidator.prenom ?? ''} ${cra.adminValidator.nom ?? ''}`.trim()
+        : '-';
 
       const formatDate = (date?: string | Date) => {
         if (!date) return '-';
@@ -150,9 +166,12 @@ export class PdfService {
 
         doc
           .fillColor(DARK_BLUE)
-          .fontSize(11)
+          .fontSize(10)
           .font('Helvetica-Bold')
-          .text(value, x + 15, y + 30);
+          .text(value, x + 15, y + 30, {
+            width: width - 25,
+            lineBreak: false,
+          });
       };
 
       const addNewPage = () => {
@@ -245,8 +264,8 @@ export class PdfService {
       const boxWidth = contentWidth / 3;
 
       drawInfoBox(margin, y, boxWidth, 'Collaborateur', collaborateur);
-      drawInfoBox(margin + boxWidth, y, boxWidth, 'Client', client);
-      drawInfoBox(margin + boxWidth * 2, y, boxWidth, 'Mois', periode);
+      drawInfoBox(margin + boxWidth, y, boxWidth, 'Entreprise', entreprise);
+      drawInfoBox(margin + boxWidth * 2, y, boxWidth, 'Service', service);
 
       y += 85;
 
@@ -410,7 +429,7 @@ export class PdfService {
       doc
         .fillColor(DARK_BLUE)
         .fontSize(10)
-        .text(formatDate(cra.date_validation_client), margin + 215, y + 24, {
+        .text(formatDate(cra.dateValidationClient), margin + 215, y + 24, {
           lineBreak: false,
         });
 
@@ -424,7 +443,7 @@ export class PdfService {
       doc
         .fillColor(DARK_BLUE)
         .fontSize(10)
-        .text(formatDate(cra.date_validation_admin), margin + 390, y + 24, {
+        .text(formatDate(cra.dateValidationAdmin), margin + 390, y + 24, {
           lineBreak: false,
         });
 
@@ -455,7 +474,7 @@ export class PdfService {
           .fillColor(DARK_BLUE)
           .fontSize(9)
           .font('Helvetica-Bold')
-          .text(name, x + 10, y + 26, {
+          .text(name || '-', x + 10, y + 26, {
             width: sigWidth - 20,
             lineBreak: false,
           });
@@ -477,59 +496,49 @@ export class PdfService {
       };
 
       drawSignature(margin, 'Collaborateur', collaborateur);
-      drawSignature(margin + sigWidth + 10, 'Représentant client', client);
+      drawSignature(margin + sigWidth + 10, 'Responsable service', clientValidator);
       drawSignature(
         margin + (sigWidth + 10) * 2,
         'Administrateur',
-        'Proxima Conseil',
+        adminValidator,
       );
 
       const range = doc.bufferedPageRange();
 
-for (let i = 0; i < range.count; i++) {
-  doc.switchToPage(i);
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(i);
 
-  const footerY = pageHeight - 58;
+        const footerY = pageHeight - 58;
 
-  doc.rect(0, footerY, pageWidth, 58).fill(BLUE);
-  doc.rect(0, footerY - 3, pageWidth, 3).fill(ORANGE);
+        doc.rect(0, footerY, pageWidth, 58).fill(BLUE);
+        doc.rect(0, footerY - 3, pageWidth, 3).fill(ORANGE);
 
-  doc
-    .fillColor('#FFFFFF')
-    .fontSize(7)
-    .font('Helvetica')
-    .text(
-      'PROXIMA CONSEIL — Document confidentiel',
-      margin,
-      footerY + 22,
-      {
-        width: 190,
-        lineBreak: false,
-      },
-    );
+        doc
+          .fillColor('#FFFFFF')
+          .fontSize(7)
+          .font('Helvetica')
+          .text('GMES — Document confidentiel', margin, footerY + 22, {
+            width: 190,
+            lineBreak: false,
+          });
 
-  doc.text(
-    `${reference} — Page ${i + 1}/${range.count}`,
-    230,
-    footerY + 22,
-    {
-      width: 150,
-      align: 'center',
-      lineBreak: false,
-    },
-  );
+        doc.text(`${reference} — Page ${i + 1}/${range.count}`, 230, footerY + 22, {
+          width: 150,
+          align: 'center',
+          lineBreak: false,
+        });
 
-  doc.text(
-    `Généré le ${new Date().toLocaleDateString('fr-FR')}`,
-    pageWidth - 180,
-    footerY + 22,
-    {
-      width: 140,
-      align: 'right',
-      lineBreak: false,
-    },
-  );
-}
+        doc.text(
+          `Généré le ${new Date().toLocaleDateString('fr-FR')}`,
+          pageWidth - 180,
+          footerY + 22,
+          {
+            width: 140,
+            align: 'right',
+            lineBreak: false,
+          },
+        );
+      }
 
       doc.end();
     });

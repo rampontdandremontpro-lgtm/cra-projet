@@ -1,4 +1,11 @@
+import { IsInt, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+
 export class CreateServiceDto {
-  company_id: number;
+  @IsInt()
+  companyId: number;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
   nom: string;
 }

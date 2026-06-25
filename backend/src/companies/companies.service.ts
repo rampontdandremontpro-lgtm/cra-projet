@@ -10,22 +10,27 @@ import { UpdateCompanyDto } from './dto/update-company.dto';
 export class CompaniesService {
   constructor(
     @InjectRepository(Company)
-    private readonly companyRepository: Repository<Company>,
+    private readonly companiesRepository: Repository<Company>,
   ) {}
 
-  findAll() {
-    return this.companyRepository.find({
-  relations: {
-    services: true,
-  },
-  order: {
-    nom: 'ASC',
-  },
-});
+  async create(createCompanyDto: CreateCompanyDto): Promise<Company> {
+    const company = this.companiesRepository.create(createCompanyDto);
+    return this.companiesRepository.save(company);
   }
 
-  async findOne(id: number) {
-    const company = await this.companyRepository.findOne({
+  async findAll(): Promise<Company[]> {
+    return this.companiesRepository.find({
+      relations: {
+          services: true,
+        },
+        order: {
+          nom: 'ASC',
+        },
+    });
+  }
+
+  async findOne(id: number): Promise<Company> {
+    const company = await this.companiesRepository.findOne({
       where: { id },
       relations: {
   services: true,
@@ -33,30 +38,28 @@ export class CompaniesService {
     });
 
     if (!company) {
-      throw new NotFoundException('Entreprise introuvable.');
+      throw new NotFoundException(`Entreprise avec l'id ${id} introuvable`);
     }
 
     return company;
   }
 
-  create(createCompanyDto: CreateCompanyDto) {
-    const company = this.companyRepository.create(createCompanyDto);
-    return this.companyRepository.save(company);
-  }
-
-  async update(id: number, updateCompanyDto: UpdateCompanyDto) {
+  async update(
+    id: number,
+    updateCompanyDto: UpdateCompanyDto,
+  ): Promise<Company> {
     const company = await this.findOne(id);
 
     Object.assign(company, updateCompanyDto);
 
-    return this.companyRepository.save(company);
+    return this.companiesRepository.save(company);
   }
 
-  async remove(id: number) {
+  async remove(id: number): Promise<void> {
     const company = await this.findOne(id);
 
-    company.is_active = false;
+    company.isActive = false;
 
-    return this.companyRepository.save(company);
+    await this.companiesRepository.save(company);
   }
 }

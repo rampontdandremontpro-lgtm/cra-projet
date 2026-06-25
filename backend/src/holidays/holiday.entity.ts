@@ -5,12 +5,12 @@ export class Holiday {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'date', unique: true })
+  @Column({ type: 'date', unique: true, nullable: false })
   date: string;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150, nullable: false })
   nom: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100, nullable: false })
   zone: string;
 }

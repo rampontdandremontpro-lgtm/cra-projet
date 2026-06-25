@@ -1,42 +1,65 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { getMe, login as loginApi, logout as logoutApi } from '../services/authApi';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('cra_user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
+  const [token, setToken] = useState(() => {
+    return localStorage.getItem('cra_token');
+  });
+
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const savedToken = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
+  const isAuthenticated = !!token && !!user;
 
-    if (savedToken) {
-      setToken(savedToken);
-    }
+  const login = async (credentials) => {
+    const data = await loginApi(credentials);
 
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    localStorage.setItem('cra_token', data.access_token);
+    localStorage.setItem('cra_user', JSON.stringify(data.user));
 
-    setLoading(false);
-  }, []);
+    setToken(data.access_token);
+    setUser(data.user);
 
-  const login = (userData, jwtToken) => {
-    localStorage.setItem('token', jwtToken);
-    localStorage.setItem('user', JSON.stringify(userData));
-
-    setUser(userData);
-    setToken(jwtToken);
+    return data.user;
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-
-    setUser(null);
+    logoutApi();
     setToken(null);
+    setUser(null);
   };
+
+  const restoreSession = async () => {
+    const savedToken = localStorage.getItem('cra_token');
+
+    if (!savedToken) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const currentUser = await getMe();
+
+      localStorage.setItem('cra_user', JSON.stringify(currentUser));
+
+      setToken(savedToken);
+      setUser(currentUser);
+    } catch (error) {
+      logout();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    restoreSession();
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -44,16 +67,22 @@ export function AuthProvider({ children }) {
         user,
         token,
         loading,
+        isAuthenticated,
         login,
         logout,
-        isAuthenticated: !!token,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error('useAuth doit être utilisé dans un AuthProvider');
+  }
+
+  return context;
+};

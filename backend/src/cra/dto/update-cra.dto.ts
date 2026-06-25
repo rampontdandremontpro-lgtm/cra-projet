@@ -1,11 +1,30 @@
-import { CraStatus } from '../cra.entity';
-import { CreateCraDayDto } from './create-cra-day.dto';
+import {
+  IsArray,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+import { UpdateCraDayDto } from './update-cra-day.dto';
 
 export class UpdateCraDto {
-  collaborateur_id?: number;
-  service_id?: number;
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
   mois?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2025)
   annee?: number;
-  statut?: CraStatus;
-  jours?: CreateCraDayDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateCraDayDto)
+  days?: UpdateCraDayDto[];
 }

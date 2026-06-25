@@ -2,16 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  JoinTable,
-  ManyToMany,
-  OneToMany,
-  ManyToOne,
   JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Cra } from '../cra/cra.entity';
-import { Client } from '../clients/client.entity';
-import { AppServiceEntity } from '../services/service.entity';
+
+import { Service } from '../services/service.entity';
 
 export enum UserRole {
   COLLABORATEUR = 'COLLABORATEUR',
@@ -31,52 +27,43 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100, nullable: false })
   nom: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100, nullable: false })
   prenom: string;
 
-  @Column({ length: 150, unique: true })
+  @Column({ type: 'varchar', length: 150, unique: true, nullable: false })
   email: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255, nullable: false })
   password: string;
 
   @Column({
     type: 'enum',
     enum: UserRole,
+    nullable: false,
   })
   role: UserRole;
 
-  @Column({ default: true })
-  is_active: boolean;
-
-  @CreateDateColumn()
-  created_at: Date;
-
-  @OneToMany(() => Cra, (cra) => cra.collaborateur)
-  cra: Cra[];
-
-  @ManyToMany(() => Client, (client) => client.collaborateurs)
-  @JoinTable({
-    name: 'collaborateur_clients',
-  })
-  clients: Client[];
-
   @Column({
-  type: 'enum',
-  enum: ContractType,
-  nullable: true,
-})
-contract_type: ContractType | null;
+    name: 'contract_type',
+    type: 'enum',
+    enum: ContractType,
+    nullable: true,
+  })
+  contractType: ContractType | null;
 
-@Column({ nullable: true })
-service_id: number | null;
+  @ManyToOne(() => Service, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'service_id' })
+  service: Service | null;
 
-@ManyToOne(() => AppServiceEntity, (service) => service.users, {
-  nullable: true,
-})
-@JoinColumn({ name: 'service_id' })
-service: AppServiceEntity | null;
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  createdAt: Date;
 }

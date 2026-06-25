@@ -5,22 +5,23 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { AppServiceEntity } from '../services/service.entity';
+
+import { Service } from '../services/service.entity';
 
 @Entity('companies')
 export class Company {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 150 })
+  @Column({ type: 'varchar', length: 150, nullable: false })
   nom: string;
 
-  @Column({ default: true })
-  is_active: boolean;
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
 
-  @CreateDateColumn()
-  created_at: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  createdAt: Date;
 
-  @OneToMany(() => AppServiceEntity, (service) => service.company)
-  services: AppServiceEntity[];
+  @OneToMany(() => Service, (service) => service.company)
+  services: Service[];
 }
