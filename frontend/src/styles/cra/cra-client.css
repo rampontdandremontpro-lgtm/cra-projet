@@ -1,0 +1,138 @@
+.client-cra-detail .client-summary-cards {
+  margin-top: 22px;
+  margin-bottom: 24px;
+}
+
+.client-cra-detail .client-stat-card strong {
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.client-cra-detail .stat-travail strong {
+  color: #2563eb;
+}
+
+.client-cra-detail .stat-conge strong {
+  color: #00a86b;
+}
+
+.client-cra-detail .stat-absence strong {
+  color: #ef4444;
+}
+
+.client-cra-detail .stat-rtt strong {
+  color: #8b5cf6;
+}
+
+.client-cra-detail .cra-day-row td {
+  transition: background-color 0.2s ease;
+}
+
+.client-cra-detail .cra-day-row.row-conge td {
+  background: #dcfce7;
+}
+
+.client-cra-detail .cra-day-row.row-absence td {
+  background: #ffedd5;
+}
+
+.client-cra-detail .cra-day-row.row-rtt td {
+  background: #f3e8ff;
+}
+
+.client-cra-detail .cra-day-row.row-travail td {
+  background: #ffffff;
+}
+
+.client-cra-detail .cra-day-row:hover td {
+  filter: brightness(0.98);
+}
+
+.client-observation-card {
+  margin-top: 32px;
+  margin-bottom: 40px;
+}
+
+.client-observation-card textarea {
+  min-height: 120px;
+  font-size: 14px;
+}
+
+.client-validation-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.client-validation-card strong {
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.client-validation-card.stat-waiting strong {
+  color: #f59e0b;
+}
+
+.client-validation-card.stat-validated strong {
+  color: #00a86b;
+}
+
+.client-validation-card.stat-refused strong {
+  color: #ef4444;
+}
+
+.client-validation-card.stat-total strong {
+  color: #2563eb;
+}
+
+.client-dashboard-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.client-dashboard-card strong {
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.client-dashboard-card.stat-waiting strong {
+  color: #f59e0b;
+}
+
+.client-dashboard-card.stat-validated strong {
+  color: #00a86b;
+}
+
+.client-dashboard-card.stat-refused strong {
+  color: #ef4444;
+}
+
+.client-dashboard-card.stat-total strong {
+  color: #2563eb;
+}
+
+.client-history-panel {
+  margin-bottom: 24px;
+}
+
+.client-history-filters {
+  padding: 22px 24px 24px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.client-history-filters label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.client-history-filters select {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 11px 12px;
+  color: #0f172a;
+  font-family: inherit;
+  font-weight: 600;
+}

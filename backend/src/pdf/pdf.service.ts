@@ -23,6 +23,7 @@ export class PdfService {
       const ORANGE = '#F39A00';
       const GREEN = '#0FA958';
       const RED = '#D93025';
+      const PURPLE = '#7C3AED';
       const GREY = '#F8FAFC';
       const BORDER = '#D6E0EA';
 
@@ -251,6 +252,111 @@ export class PdfService {
           });
       };
 
+      const getClientValidationStatus = () => {
+  if (cra.statut === 'SOUMIS_CLIENT') {
+    return {
+      label: 'SOUMIS_CLIENT',
+      color: ORANGE,
+      bg: '#FFF3E0',
+    };
+  }
+
+  if (
+    cra.statut === 'VALIDE_CLIENT' ||
+    cra.statut === 'VALIDE_ADMIN' ||
+    cra.statut === 'REFUSE_ADMIN' ||
+    cra.statut === 'ARCHIVE'
+  ) {
+    return {
+      label: 'VALIDE_CLIENT',
+      color: GREEN,
+      bg: '#EAFBF0',
+    };
+  }
+
+  if (cra.statut === 'REFUSE_CLIENT') {
+    return {
+      label: 'REFUSE_CLIENT',
+      color: RED,
+      bg: '#FFF0F0',
+    };
+  }
+
+  return {
+    label: '-',
+    color: '#5D6D7E',
+    bg: '#FFFFFF',
+  };
+};
+
+const getAdminValidationStatus = () => {
+  if (cra.statut === 'VALIDE_ADMIN' || cra.statut === 'ARCHIVE') {
+    return {
+      label: 'VALIDE_ADMIN',
+      color: GREEN,
+      bg: '#EAFBF0',
+    };
+  }
+
+  if (cra.statut === 'REFUSE_ADMIN') {
+    return {
+      label: 'REFUSE_ADMIN',
+      color: RED,
+      bg: '#FFF0F0',
+    };
+  }
+
+  return {
+    label: '-',
+    color: '#5D6D7E',
+    bg: '#FFFFFF',
+  };
+};
+
+const drawValidationBox = (
+  x: number,
+  y: number,
+  width: number,
+  title: string,
+  status: { label: string; color: string; bg: string },
+  date?: string | Date | null,
+) => {
+  doc
+    .roundedRect(x, y, width, 55, 6)
+    .fillAndStroke('#FFFFFF', BORDER);
+
+  doc
+    .fillColor('#5D6D7E')
+    .fontSize(8)
+    .font('Helvetica-Bold')
+    .text(title.toUpperCase(), x + 15, y + 10, {
+      width: width - 30,
+      lineBreak: false,
+    });
+
+  doc
+    .roundedRect(x + 15, y + 25, 120, 18, 5)
+    .fill(status.bg);
+
+  doc
+    .fillColor(status.color)
+    .fontSize(8)
+    .font('Helvetica-Bold')
+    .text(status.label, x + 22, y + 30, {
+      width: 110,
+      lineBreak: false,
+    });
+
+  doc
+    .fillColor(DARK_BLUE)
+    .fontSize(8)
+    .font('Helvetica-Bold')
+    .text(formatDate(date), x + 145, y + 30, {
+      width: width - 155,
+      lineBreak: false,
+    });
+};
+
       drawHeader();
 
       let y = 120;
@@ -307,22 +413,22 @@ export class PdfService {
           .text(formatDate(jour.date), margin + 10, y + 8);
 
         const typeColor =
-          jour.type === 'CONGE'
-            ? ORANGE
-            : jour.type === 'ABSENCE'
-              ? RED
-              : jour.type === 'RTT'
-                ? '#7C3AED'
-                : BLUE;
+  jour.type === 'CONGE'
+    ? GREEN
+    : jour.type === 'ABSENCE'
+      ? RED
+      : jour.type === 'RTT'
+        ? PURPLE
+        : BLUE;
 
-        const typeBg =
-          jour.type === 'CONGE'
-            ? '#FFF3E0'
-            : jour.type === 'ABSENCE'
-              ? '#FFF0F0'
-              : jour.type === 'RTT'
-                ? '#F5F3FF'
-                : '#EAF4FF';
+const typeBg =
+  jour.type === 'CONGE'
+    ? '#EAFBF0'
+    : jour.type === 'ABSENCE'
+      ? '#FFF0F0'
+      : jour.type === 'RTT'
+        ? '#F5F3FF'
+        : '#EAF4FF';
 
         doc
           .roundedRect(margin + colWidths[0] + 10, y + 6, 58, 14, 3)
@@ -377,14 +483,14 @@ export class PdfService {
       );
 
       drawSummaryCard(
-        margin + (cardWidth + cardGap),
-        y,
-        cardWidth,
-        totalConges,
-        'Congés',
-        ORANGE,
-        '#FFF3E0',
-      );
+  margin + (cardWidth + cardGap),
+  y,
+  cardWidth,
+  totalConges,
+  'Congés',
+  GREEN,
+  '#EAFBF0',
+);
 
       drawSummaryCard(
         margin + (cardWidth + cardGap) * 2,
@@ -397,67 +503,51 @@ export class PdfService {
       );
 
       drawSummaryCard(
-        margin + (cardWidth + cardGap) * 3,
-        y,
-        cardWidth,
-        totalRtt,
-        'RTT',
-        GREEN,
-        '#EAFBF0',
-      );
+  margin + (cardWidth + cardGap) * 3,
+  y,
+  cardWidth,
+  totalRtt,
+  'RTT',
+  PURPLE,
+  '#F5F3FF',
+);
 
       y += 80;
 
       drawSectionTitle('STATUT & VALIDATION', y);
-      y += 28;
+y += 28;
 
-      doc
-        .roundedRect(margin, y, 180, 42, 6)
-        .fillAndStroke('#EAFBF0', GREEN);
+const validationBoxGap = 14;
+const validationBoxWidth = (contentWidth - validationBoxGap) / 2;
 
-      doc
-        .fillColor(GREEN)
-        .fontSize(11)
-        .font('Helvetica-Bold')
-        .text(cra.statut, margin + 20, y + 15, {
-          lineBreak: false,
-        });
+const clientStatus = getClientValidationStatus();
+const adminStatus = getAdminValidationStatus();
 
-      doc
-        .roundedRect(margin + 200, y, contentWidth - 200, 42, 6)
-        .strokeColor(BORDER)
-        .stroke();
+const clientValidationDate =
+  cra.dateValidationClient || cra.dateRefusClient || null;
 
-      doc
-        .fillColor('#5D6D7E')
-        .fontSize(8)
-        .font('Helvetica-Bold')
-        .text('VALIDATION CLIENT', margin + 215, y + 8, {
-          lineBreak: false,
-        });
+const adminValidationDate =
+  cra.dateValidationAdmin || cra.dateRefusAdmin || null;
 
-      doc
-        .fillColor(DARK_BLUE)
-        .fontSize(10)
-        .text(formatDate(cra.dateValidationClient), margin + 215, y + 24, {
-          lineBreak: false,
-        });
+drawValidationBox(
+  margin,
+  y,
+  validationBoxWidth,
+  'Validation client',
+  clientStatus,
+  clientValidationDate,
+);
 
-      doc
-        .fillColor('#5D6D7E')
-        .fontSize(8)
-        .text('VALIDATION ADMINISTRATEUR', margin + 390, y + 8, {
-          lineBreak: false,
-        });
+drawValidationBox(
+  margin + validationBoxWidth + validationBoxGap,
+  y,
+  validationBoxWidth,
+  'Validation administrateur',
+  adminStatus,
+  adminValidationDate,
+);
 
-      doc
-        .fillColor(DARK_BLUE)
-        .fontSize(10)
-        .text(formatDate(cra.dateValidationAdmin), margin + 390, y + 24, {
-          lineBreak: false,
-        });
-
-      y += 70;
+y += 80;
       y = ensureSpace(y, 115);
 
       drawSectionTitle('SIGNATURES', y);

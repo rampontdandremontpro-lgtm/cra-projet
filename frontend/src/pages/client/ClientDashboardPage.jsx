@@ -216,18 +216,6 @@ export default function ClientDashboardPage() {
                           >
                             👁 PDF
                           </button>
-
-                          {cra.statut === 'SOUMIS_CLIENT' && (
-                            <button
-                              type="button"
-                              className="validate-btn"
-                              onClick={() =>
-                                navigate('/client/cra-a-valider')
-                              }
-                            >
-                              Traiter
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>

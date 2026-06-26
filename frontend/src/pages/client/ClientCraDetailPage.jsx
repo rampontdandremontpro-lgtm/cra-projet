@@ -153,7 +153,7 @@ export default function ClientCraDetailPage() {
       setSuccess('CRA validé avec succès.');
 
       setTimeout(() => {
-        navigate('/client/cra-a-valider');
+        navigate('/client/historique');
       }, 700);
     } catch (err) {
       console.error(err);
@@ -189,7 +189,7 @@ export default function ClientCraDetailPage() {
       setSuccess('CRA refusé avec succès.');
 
       setTimeout(() => {
-        navigate('/client/cra-a-valider');
+        navigate('/client/historique');
       }, 700);
     } catch (err) {
       console.error(err);

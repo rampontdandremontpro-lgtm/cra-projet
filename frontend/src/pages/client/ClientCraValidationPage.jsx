@@ -50,11 +50,6 @@ export default function ClientCraValidationPage() {
   const getStatusLabel = (statut) => {
     const labels = {
       SOUMIS_CLIENT: 'À valider',
-      VALIDE_CLIENT: 'Validé client',
-      REFUSE_CLIENT: 'Refusé client',
-      VALIDE_ADMIN: 'Validé admin',
-      REFUSE_ADMIN: 'Refusé admin',
-      ARCHIVE: 'Archivé',
     };
 
     return labels[statut] || statut;
@@ -89,14 +84,6 @@ export default function ClientCraValidationPage() {
     (cra) => cra.statut === 'SOUMIS_CLIENT',
   );
 
-  const crasValidated = cras.filter(
-  (cra) => cra.statut === 'VALIDE_CLIENT' || cra.statut === 'VALIDE_ADMIN',
-);
-  
-  const crasRefused = cras.filter(
-  (cra) => cra.statut === 'REFUSE_CLIENT' || cra.statut === 'REFUSE_ADMIN',
-);
-
   return (
     <div className="dashboard-page">
       <Sidebar />
@@ -109,35 +96,14 @@ export default function ClientCraValidationPage() {
           </div>
         </div>
 
-        <section className="dashboard-cards client-validation-cards">
-  <div className="dashboard-card client-validation-card stat-waiting">
-    <span>CRA à valider</span>
-    <strong>{crasToValidate.length}</strong>
-  </div>
-
-  <div className="dashboard-card client-validation-card stat-validated">
-    <span>CRA validés</span>
-    <strong>{crasValidated.length}</strong>
-  </div>
-
-  <div className="dashboard-card client-validation-card stat-refused">
-    <span>CRA refusés</span>
-    <strong>{crasRefused.length}</strong>
-  </div>
-
-  <div className="dashboard-card client-validation-card stat-total">
-    <span>Total CRA service</span>
-    <strong>{cras.length}</strong>
-  </div>
-</section>
         <section className="dashboard-panel cra-panel">
           <div className="panel-header">
             <div className="panel-title">
               <span className="panel-icon">✅</span>
 
               <div>
-                <h2>CRA de mon service</h2>
-                <p>{cras.length} compte-rendu(s)</p>
+                <h2>CRA à valider</h2>
+                <p>{crasToValidate.length} CRA en attente</p>
               </div>
             </div>
           </div>
@@ -146,8 +112,8 @@ export default function ClientCraValidationPage() {
 
           {loading ? (
             <p className="empty-text">Chargement...</p>
-          ) : cras.length === 0 ? (
-            <p className="empty-text">Aucun CRA trouvé pour votre service.</p>
+          ) : crasToValidate.length === 0 ? (
+            <p className="empty-text">Aucun CRA à valider pour le moment.</p>
           ) : (
             <table className="cra-dashboard-table">
               <thead>
@@ -162,7 +128,7 @@ export default function ClientCraValidationPage() {
               </thead>
 
               <tbody>
-                {cras.map((cra) => (
+                {crasToValidate.map((cra) => (
                   <tr key={cra.id}>
                     <td>{getCollaboratorName(cra)}</td>
 
@@ -189,7 +155,7 @@ export default function ClientCraValidationPage() {
                       <div className="actions-cell">
                         <button
                           type="button"
-                          className="view-btn"
+                          className="view-btn compact-action-btn"
                           onClick={() => handleDownloadPdf(cra)}
                         >
                           👁 PDF
@@ -197,12 +163,10 @@ export default function ClientCraValidationPage() {
 
                         <button
                           type="button"
-                          className="edit-btn"
+                          className="edit-btn compact-action-btn"
                           onClick={() => navigate(`/client/cra/${cra.id}`)}
                         >
-                          {cra.statut === 'SOUMIS_CLIENT'
-                            ? 'À valider'
-                            : 'Voir'}
+                          À valider
                         </button>
                       </div>
                     </td>

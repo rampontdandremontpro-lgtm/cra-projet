@@ -1,0 +1,77 @@
+.cra-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.side-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.side-card h3 {
+  text-transform: uppercase;
+  font-size: 13px;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.summary-line strong {
+  font-weight: 800;
+}
+
+.summary-line.blue strong,
+.legend-line.blue {
+  color: #2563eb;
+}
+
+.summary-line.green strong,
+.legend-line.green {
+  color: #10b981;
+}
+
+.summary-line.red strong,
+.legend-line.red {
+  color: #ef4444;
+}
+
+.summary-line.purple strong,
+.legend-line.purple {
+  color: #8b5cf6;
+}
+
+.summary-total {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.legend-line {
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.refusal-message {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  line-height: 1.4;
+}

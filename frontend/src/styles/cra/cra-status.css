@@ -1,0 +1,64 @@
+.status-draft {
+  color: #f59e0b;
+}
+
+.status-side {
+  display: inline-flex;
+  padding: 9px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.status-side.status-brouillon {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.status-side.status-soumis_client {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.status-side.status-valide_client,
+.status-side.status-valide_admin {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.status-side.status-refuse_client,
+.status-side.status-refuse_admin {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.cra-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.badge-travail {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.badge-conge {
+  background: #bbf7d0;
+  color: #047857;
+}
+
+.badge-absence {
+  background: #fecaca;
+  color: #b91c1c;
+}
+
+.badge-rtt {
+  background: #e9d5ff;
+  color: #6d28d9;
+}

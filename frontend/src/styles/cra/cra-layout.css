@@ -1,0 +1,76 @@
+.cra-page-title {
+  margin-bottom: 24px;
+}
+
+.cra-page-title .breadcrumb {
+  color: #64748b;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.cra-page-title h1 {
+  font-size: 28px;
+  color: #0f172a;
+}
+
+.cra-create-layout {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 24px;
+  align-items: start;
+}
+
+.cra-main-card {
+  grid-column: 1 / 2;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.cra-section-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cra-section-header h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.cra-info-grid {
+  padding: 24px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+}
+
+.cra-info-grid label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.cra-info-grid input,
+.cra-info-grid select {
+  width: 100%;
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 15px;
+}
+
+.cra-info-grid input:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}

@@ -10,6 +10,7 @@ import CraDetailPage from './pages/collab/CraDetailPage';
 import ClientDashboardPage from './pages/client/ClientDashboardPage';
 import ClientCraValidationPage from './pages/client/ClientCraValidationPage';
 import ClientCraDetailPage from './pages/client/ClientCraDetailPage';
+import ClientHistoryPage from './pages/client/ClientHistoryPage';
 
 import RhDashboardPage from './pages/rh/RhDashboardPage';
 import RhCollaboratorsPage from './pages/rh/RhCollaboratorsPage';
@@ -37,6 +38,7 @@ function App() {
         <Route path="/client/dashboard" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientDashboardPage /></ProtectedRoute>} />
         <Route path="/client/cra-a-valider" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientCraValidationPage /></ProtectedRoute>} />
         <Route path="/client/cra/:id" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientCraDetailPage /></ProtectedRoute>} />
+        <Route  path="/client/historique" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientHistoryPage /></ProtectedRoute>}/>
         <Route path="/rh/dashboard" element={<ProtectedRoute allowedRoles={['RH']}><RhDashboardPage /></ProtectedRoute>} />
         <Route path="/rh/collaborateurs" element={<ProtectedRoute allowedRoles={['RH']}><RhCollaboratorsPage /></ProtectedRoute>} />
         <Route path="/rh/clients" element={<ProtectedRoute allowedRoles={['RH']}><RhClientsPage /></ProtectedRoute>} />

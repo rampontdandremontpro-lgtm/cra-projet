@@ -1,0 +1,32 @@
+.form-error,
+.cra-error {
+  margin: 16px 24px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: #dc2626;
+  font-weight: 600;
+  animation: fadeIn 0.3s ease;
+}
+
+.cra-success {
+  margin: 16px 24px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #dcfce7;
+  color: #15803d;
+  font-weight: 600;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
