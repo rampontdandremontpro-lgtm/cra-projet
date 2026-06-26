@@ -1,21 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
-import {
-  getCraForClient,
-  getCraPdf,
-  refuseCraByClient,
-  validateCraByClient,
-} from '../../services/craApi';
+import { downloadCraPdf, getCraForClient } from '../../services/craApi';
 
 import '../../styles/dashboard.css';
 import '../../styles/cra.css';
 
 export default function ClientCraValidationPage() {
+  const navigate = useNavigate();
+
   const [cras, setCras] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCra, setSelectedCra] = useState(null);
-  const [refusalMotif, setRefusalMotif] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -53,7 +49,6 @@ export default function ClientCraValidationPage() {
 
   const getStatusLabel = (statut) => {
     const labels = {
-      BROUILLON: 'Brouillon',
       SOUMIS_CLIENT: 'À valider',
       VALIDE_CLIENT: 'Validé client',
       REFUSE_CLIENT: 'Refusé client',
@@ -78,75 +73,29 @@ export default function ClientCraValidationPage() {
         .join(' - ');
     }
 
-    return cra.client?.nom || '-';
+    return '-';
   };
 
-  const handleOpenPdf = async (cra) => {
+  const handleDownloadPdf = async (cra) => {
     try {
-      const pdfBlob = await getCraPdf(cra.id);
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-
-      window.open(pdfUrl, '_blank');
+      await downloadCraPdf(cra);
     } catch (err) {
       console.error(err);
-      setError("Impossible d'ouvrir le PDF.");
-    }
-  };
-
-  const handleValidate = async (cra) => {
-    const confirmValidation = confirm(
-      `Valider le CRA de ${getCollaboratorName(cra)} pour ${getMonthName(
-        cra.mois,
-      )} ${cra.annee} ?`,
-    );
-
-    if (!confirmValidation) return;
-
-    try {
-      await validateCraByClient(cra.id);
-      await loadCra();
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.response?.data?.message || 'Impossible de valider ce CRA.',
-      );
-    }
-  };
-
-  const openRefuseModal = (cra) => {
-    setSelectedCra(cra);
-    setRefusalMotif('');
-    setError('');
-  };
-
-  const closeRefuseModal = () => {
-    setSelectedCra(null);
-    setRefusalMotif('');
-  };
-
-  const handleRefuse = async () => {
-    if (!refusalMotif.trim()) {
-      setError('Le motif de refus est obligatoire.');
-      return;
-    }
-
-    try {
-      await refuseCraByClient(selectedCra.id, refusalMotif);
-      closeRefuseModal();
-      await loadCra();
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.response?.data?.message || 'Impossible de refuser ce CRA.',
-      );
+      setError("Impossible de télécharger le PDF.");
     }
   };
 
   const crasToValidate = cras.filter(
     (cra) => cra.statut === 'SOUMIS_CLIENT',
   );
+
+  const crasValidated = cras.filter(
+  (cra) => cra.statut === 'VALIDE_CLIENT' || cra.statut === 'VALIDE_ADMIN',
+);
+  
+  const crasRefused = cras.filter(
+  (cra) => cra.statut === 'REFUSE_CLIENT' || cra.statut === 'REFUSE_ADMIN',
+);
 
   return (
     <div className="dashboard-page">
@@ -160,18 +109,27 @@ export default function ClientCraValidationPage() {
           </div>
         </div>
 
-        <section className="dashboard-cards">
-          <div className="dashboard-card">
-            <span>CRA à valider</span>
-            <strong>{crasToValidate.length}</strong>
-          </div>
+        <section className="dashboard-cards client-validation-cards">
+  <div className="dashboard-card client-validation-card stat-waiting">
+    <span>CRA à valider</span>
+    <strong>{crasToValidate.length}</strong>
+  </div>
 
-          <div className="dashboard-card">
-            <span>Total CRA service</span>
-            <strong>{cras.length}</strong>
-          </div>
-        </section>
+  <div className="dashboard-card client-validation-card stat-validated">
+    <span>CRA validés</span>
+    <strong>{crasValidated.length}</strong>
+  </div>
 
+  <div className="dashboard-card client-validation-card stat-refused">
+    <span>CRA refusés</span>
+    <strong>{crasRefused.length}</strong>
+  </div>
+
+  <div className="dashboard-card client-validation-card stat-total">
+    <span>Total CRA service</span>
+    <strong>{cras.length}</strong>
+  </div>
+</section>
         <section className="dashboard-panel cra-panel">
           <div className="panel-header">
             <div className="panel-title">
@@ -232,30 +190,20 @@ export default function ClientCraValidationPage() {
                         <button
                           type="button"
                           className="view-btn"
-                          onClick={() => handleOpenPdf(cra)}
+                          onClick={() => handleDownloadPdf(cra)}
                         >
                           👁 PDF
                         </button>
 
-                        {cra.statut === 'SOUMIS_CLIENT' && (
-                          <>
-                            <button
-                              type="button"
-                              className="validate-btn"
-                              onClick={() => handleValidate(cra)}
-                            >
-                              Valider
-                            </button>
-
-                            <button
-                              type="button"
-                              className="delete-btn"
-                              onClick={() => openRefuseModal(cra)}
-                            >
-                              Refuser
-                            </button>
-                          </>
-                        )}
+                        <button
+                          type="button"
+                          className="edit-btn"
+                          onClick={() => navigate(`/client/cra/${cra.id}`)}
+                        >
+                          {cra.statut === 'SOUMIS_CLIENT'
+                            ? 'À valider'
+                            : 'Voir'}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -264,47 +212,6 @@ export default function ClientCraValidationPage() {
             </table>
           )}
         </section>
-
-        {selectedCra && (
-          <div className="modal-backdrop">
-            <div className="modal-card">
-              <h2>Refuser le CRA</h2>
-
-              <p>
-                CRA de {getCollaboratorName(selectedCra)} —{' '}
-                {getMonthName(selectedCra.mois)} {selectedCra.annee}
-              </p>
-
-              <label>
-                Motif du refus
-                <textarea
-                  value={refusalMotif}
-                  onChange={(e) => setRefusalMotif(e.target.value)}
-                  placeholder="Explique pourquoi le CRA est refusé..."
-                  rows={5}
-                />
-              </label>
-
-              <div className="cra-form-actions">
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={closeRefuseModal}
-                >
-                  Annuler
-                </button>
-
-                <button
-                  type="button"
-                  className="delete-btn"
-                  onClick={handleRefuse}
-                >
-                  Confirmer le refus
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
