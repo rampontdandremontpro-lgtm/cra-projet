@@ -3,12 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
 import {
-  getCraById,
-  updateCra,
   deleteCra,
-  submitCra,
-  checkCra,
+  getCraById,
   getCraPdf,
+  submitCra,
+  updateCra,
 } from '../../services/craApi';
 
 import {
@@ -53,8 +52,9 @@ export default function CraDetailPage() {
   const loadCra = async () => {
     try {
       const data = await getCraById(id);
+
       setCra(data);
-      setJours(data.jours || []);
+      setJours(data.jours || data.days || []);
     } catch (err) {
       console.error(err);
       setError('Impossible de charger le CRA.');
@@ -69,6 +69,20 @@ export default function CraDetailPage() {
     cra?.statut === 'REFUSE_ADMIN';
 
   const totals = useMemo(() => calculateCraTotals(jours), [jours]);
+
+  const getServiceLabel = () => {
+    if (cra?.client?.nom) {
+      return cra.client.nom;
+    }
+
+    if (cra?.service) {
+      return [cra.service.company?.nom, cra.service.nom]
+        .filter(Boolean)
+        .join(' - ');
+    }
+
+    return '-';
+  };
 
   const handleDayChange = (index, field, value) => {
     const updatedDays = [...jours];
@@ -100,12 +114,15 @@ export default function CraDetailPage() {
   };
 
   const removeDay = (index) => {
+    if (jours.length === 1) {
+      setError('Le CRA doit contenir au moins une ligne.');
+      return;
+    }
+
     setJours(jours.filter((_, i) => i !== index));
   };
 
   const buildPayload = () => ({
-    collaborateur_id: cra.collaborateur?.id,
-    client_id: cra.client?.id,
     mois: cra.mois,
     annee: cra.annee,
     jours: jours.map((jour) => ({
@@ -116,44 +133,71 @@ export default function CraDetailPage() {
     })),
   });
 
-  const handleSave = async () => {
+    const handleSave = async () => {
     setSaving(true);
     setError('');
     setSuccess('');
 
+    const currentDays = [...jours];
+
     try {
-      const updated = await updateCra(id, buildPayload());
-      setCra(updated);
-      setJours(updated.jours || []);
+      await updateCra(id, buildPayload());
+
+      const refreshedCra = await getCraById(id);
+
+      const refreshedDays =
+        refreshedCra.jours?.length > 0
+          ? refreshedCra.jours
+          : refreshedCra.days?.length > 0
+            ? refreshedCra.days
+            : currentDays;
+
+      setCra(refreshedCra);
+      setJours(refreshedDays);
+
       setSuccess('CRA enregistré avec succès.');
     } catch (err) {
       console.error(err);
+
       setError(
-        err.response?.data?.message || "Impossible d'enregistrer le CRA."
+        err.response?.data?.message || "Impossible d'enregistrer le CRA.",
       );
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSubmit = async () => {
+      const handleSubmit = async () => {
     setSaving(true);
     setError('');
     setSuccess('');
 
-    try {
-      const payload = buildPayload();
+    const currentDays = [...jours];
 
-      await checkCra(payload);
-      await updateCra(id, payload);
+    try {
+      await updateCra(id, buildPayload());
+
+      const refreshedCra = await getCraById(id);
+
+      const refreshedDays =
+        refreshedCra.jours?.length > 0
+          ? refreshedCra.jours
+          : refreshedCra.days?.length > 0
+            ? refreshedCra.days
+            : currentDays;
+
+      setCra(refreshedCra);
+      setJours(refreshedDays);
+
       await submitCra(id);
 
       navigate('/mes-cra');
     } catch (err) {
       console.error(err);
+
       setError(
         err.response?.data?.message ||
-          'Impossible de soumettre le CRA. Vérifie les jours déclarés.'
+          'Impossible de soumettre le CRA. Vérifie les jours déclarés.',
       );
     } finally {
       setSaving(false);
@@ -168,17 +212,16 @@ export default function CraDetailPage() {
       navigate('/mes-cra');
     } catch (err) {
       console.error(err);
+
       setError(
-        err.response?.data?.message || 'Impossible de supprimer le CRA.'
+        err.response?.data?.message || 'Impossible de supprimer le CRA.',
       );
     }
   };
 
   const handlePdf = async () => {
     try {
-      const pdfBlob = await getCraPdf(id);
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      await downloadCraPdf(cra);
     } catch (err) {
       console.error(err);
       setError("Impossible d'ouvrir le PDF.");
@@ -243,10 +286,10 @@ export default function CraDetailPage() {
                 </label>
 
                 <label>
-                  Client
+                  Service / Client
                   <input
                     type="text"
-                    value={cra.client?.nom || '-'}
+                    value={getServiceLabel()}
                     disabled
                     readOnly
                   />
@@ -308,7 +351,7 @@ export default function CraDetailPage() {
 
                         {Array.from(
                           { length: getLastDayOfMonth(cra.annee, cra.mois) },
-                          (_, i) => i + 1
+                          (_, i) => i + 1,
                         ).map((day) => (
                           <option key={day} value={day}>
                             {String(day).padStart(2, '0')}

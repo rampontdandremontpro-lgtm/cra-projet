@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 
@@ -17,6 +18,14 @@ import { CollaboratorAssignmentsService } from './collaborator-assignments.servi
 import { CreateCollaboratorAssignmentDto } from './dto/create-collaborator-assignment.dto';
 import { UpdateCollaboratorAssignmentDto } from './dto/update-collaborator-assignment.dto';
 
+type AuthenticatedRequest = {
+  user: {
+    id: number;
+    email: string;
+    role: UserRole;
+  };
+};
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('collaborator-assignments')
 export class CollaboratorAssignmentsController {
@@ -26,14 +35,27 @@ export class CollaboratorAssignmentsController {
 
   @Roles(UserRole.RH)
   @Post()
-  create(@Body() createAssignmentDto: CreateCollaboratorAssignmentDto) {
-    return this.collaboratorAssignmentsService.create(createAssignmentDto);
+  create(
+    @Body()
+    createCollaboratorAssignmentDto: CreateCollaboratorAssignmentDto,
+  ) {
+    return this.collaboratorAssignmentsService.create(
+      createCollaboratorAssignmentDto,
+    );
   }
 
   @Roles(UserRole.RH, UserRole.ADMIN)
   @Get()
   findAll() {
     return this.collaboratorAssignmentsService.findAll();
+  }
+
+  @Roles(UserRole.COLLABORATEUR)
+  @Get('my-active')
+  findMyActiveAssignment(@Req() req: AuthenticatedRequest) {
+    return this.collaboratorAssignmentsService.findActiveByCollaborator(
+      req.user.id,
+    );
   }
 
   @Roles(UserRole.RH, UserRole.ADMIN)
@@ -56,9 +78,13 @@ export class CollaboratorAssignmentsController {
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateAssignmentDto: UpdateCollaboratorAssignmentDto,
+    @Body()
+    updateCollaboratorAssignmentDto: UpdateCollaboratorAssignmentDto,
   ) {
-    return this.collaboratorAssignmentsService.update(id, updateAssignmentDto);
+    return this.collaboratorAssignmentsService.update(
+      id,
+      updateCollaboratorAssignmentDto,
+    );
   }
 
   @Roles(UserRole.RH)

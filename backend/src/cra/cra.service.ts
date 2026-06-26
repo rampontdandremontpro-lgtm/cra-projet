@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { CollaboratorAssignment } from '../collaborator-assignments/collaborator-assignment.entity';
 import { Holiday } from '../holidays/holiday.entity';
@@ -53,21 +53,15 @@ export class CraService {
       );
     }
 
-    const activeAssignment = await this.assignmentsRepository.findOne({
-      where: {
-        collaborator: { id: collaboratorId },
-        isActive: true,
-      },
-      relations: {
-        service: { company: true },
-      },
-    });
+    const activeAssignment = await this.findActiveAssignmentOrFail(collaboratorId);
 
-    if (!activeAssignment) {
-      throw new BadRequestException(
-        'Impossible de créer un CRA : le collaborateur n’a aucune affectation active',
-      );
-    }
+this.validateCraPeriodWithAssignment(
+  createCraDto.mois,
+  createCraDto.annee,
+  activeAssignment,
+);
+
+this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
 
     const existingCra = await this.craRepository.findOne({
       where: {
@@ -233,42 +227,45 @@ export class CraService {
     });
   }
 
-  async findForClient(clientId: number): Promise<Cra[]> {
+    async findForClient(clientId: number): Promise<Cra[]> {
     const client = await this.usersRepository.findOne({
       where: { id: clientId },
-      relations: {
-        service: true,
-      },
+      relations: { service: true },
     });
 
-    if (!client) {
-      throw new NotFoundException('Utilisateur CLIENT introuvable');
-    }
-
-    if (client.role !== UserRole.CLIENT) {
+    if (!client || client.role !== UserRole.CLIENT || !client.service) {
       throw new ForbiddenException(
-        'Seul un utilisateur CLIENT peut consulter les CRA de son service',
-      );
-    }
-
-    if (!client.service) {
-      throw new BadRequestException(
-        'Ce CLIENT n’est rattaché à aucun service',
+        'Ce compte client n’est rattaché à aucun service',
       );
     }
 
     return this.craRepository.find({
       where: {
         service: { id: client.service.id },
+        statut: In([
+          CraStatus.SOUMIS_CLIENT,
+          CraStatus.VALIDE_CLIENT,
+          CraStatus.REFUSE_CLIENT,
+          CraStatus.VALIDE_ADMIN,
+          CraStatus.REFUSE_ADMIN,
+          CraStatus.ARCHIVE,
+        ]),
       },
       relations: {
         collaborateur: true,
-        service: { company: true },
+        service: {
+          company: true,
+        },
         days: true,
+        clientValidator: true,
+        clientRefuser: true,
+        adminValidator: true,
+        adminRefuser: true,
       },
       order: {
         annee: 'DESC',
         mois: 'DESC',
+        createdAt: 'DESC',
       },
     });
   }
@@ -289,18 +286,18 @@ export class CraService {
     });
   }
 
-  async update(
-  id: number,
-  collaboratorId: number,
-  updateCraDto: UpdateCraDto,
-): Promise<Cra> {
+    async update(
+    id: number,
+    collaboratorId: number,
+    updateCraDto: UpdateCraDto,
+  ): Promise<Cra> {
     const cra = await this.findOne(id);
 
     if (cra.collaborateur.id !== collaboratorId) {
-  throw new ForbiddenException(
-    'Vous ne pouvez modifier que vos propres CRA',
-  );
-}
+      throw new ForbiddenException(
+        'Vous ne pouvez modifier que vos propres CRA',
+      );
+    }
 
     if (
       cra.statut !== CraStatus.BROUILLON &&
@@ -312,17 +309,31 @@ export class CraService {
       );
     }
 
-    if (updateCraDto.mois !== undefined) {
-      cra.mois = updateCraDto.mois;
+    const mois = updateCraDto.mois ?? cra.mois;
+    const annee = updateCraDto.annee ?? cra.annee;
+    const days = updateCraDto.days ?? cra.days;
+
+    if (!days || days.length === 0) {
+      throw new BadRequestException(
+        'Le CRA doit contenir au moins une journée',
+      );
     }
 
-    if (updateCraDto.annee !== undefined) {
-      cra.annee = updateCraDto.annee;
-    }
+    const activeAssignment = await this.findActiveAssignmentOrFail(
+      cra.collaborateur.id,
+    );
+
+    this.validateCraPeriodWithAssignment(mois, annee, activeAssignment);
+    this.validateCraDaysWithAssignment(days, activeAssignment);
+
+    await this.validateCraDaysDates(mois, annee, days);
+
+    cra.mois = mois;
+    cra.annee = annee;
+    cra.statut = CraStatus.BROUILLON;
+    cra.dateSoumission = null;
 
     if (updateCraDto.days !== undefined) {
-      await this.validateCraDaysDates(cra.mois, cra.annee, updateCraDto.days);
-
       await this.craDayRepository
         .createQueryBuilder()
         .delete()
@@ -332,10 +343,10 @@ export class CraService {
 
       const newDays = updateCraDto.days.map((day) =>
         this.craDayRepository.create({
-          cra,
+          cra: { id: cra.id } as Cra,
           date: day.date,
           type: day.type,
-          duree: day.duree ?? 1,
+          duree: Number(day.duree ?? 1),
           commentaire: day.commentaire ?? null,
         }),
       );
@@ -343,10 +354,14 @@ export class CraService {
       await this.craDayRepository.save(newDays);
     }
 
-    cra.statut = CraStatus.BROUILLON;
-    cra.dateSoumission = null;
+    await this.craRepository.update(cra.id, {
+      mois: cra.mois,
+      annee: cra.annee,
+      statut: CraStatus.BROUILLON,
+      dateSoumission: null,
+    });
 
-    return this.craRepository.save(cra);
+    return this.findOne(cra.id);
   }
 
   async submit(id: number, collaboratorId: number): Promise<Cra> {
@@ -357,6 +372,13 @@ export class CraService {
         'Vous ne pouvez soumettre que vos propres CRA',
       );
     }
+
+    const activeAssignment = await this.findActiveAssignmentOrFail(
+  cra.collaborateur.id,
+);
+
+this.validateCraPeriodWithAssignment(cra.mois, cra.annee, activeAssignment);
+this.validateCraDaysWithAssignment(cra.days, activeAssignment);
 
     if (
       cra.statut !== CraStatus.BROUILLON &&
@@ -701,10 +723,98 @@ export class CraService {
     return { year, month, day };
   }
 
+    private toJsDate(date: string): Date {
+    const { year, month, day } = this.parseDate(date);
+    return new Date(year, month - 1, day);
+  }
+
   private formatDate(year: number, month: number, day: number): string {
     const formattedMonth = String(month).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
 
     return `${year}-${formattedMonth}-${formattedDay}`;
+  }
+
+      private async findActiveAssignmentOrFail(
+    collaboratorId: number,
+  ): Promise<CollaboratorAssignment> {
+    const activeAssignment = await this.assignmentsRepository.findOne({
+      where: {
+        collaborator: { id: collaboratorId },
+        isActive: true,
+      },
+      relations: {
+        service: {
+          company: true,
+        },
+      },
+    });
+
+    if (!activeAssignment) {
+      throw new BadRequestException(
+        "Impossible de créer un CRA : le collaborateur n’a aucune affectation active",
+      );
+    }
+
+    return activeAssignment;
+  }
+
+    private validateCraPeriodWithAssignment(
+    mois: number,
+    annee: number,
+    assignment: CollaboratorAssignment,
+  ): void {
+    const monthStart = new Date(annee, mois - 1, 1);
+    const monthEnd = new Date(annee, mois, 0);
+
+    const assignmentStart = this.toJsDate(assignment.startDate);
+
+    if (monthEnd < assignmentStart) {
+      throw new BadRequestException(
+        `Impossible de créer ce CRA : l’affectation commence le ${assignment.startDate}`,
+      );
+    }
+
+    if (assignment.endDate) {
+      const assignmentEnd = this.toJsDate(assignment.endDate);
+
+      if (monthStart > assignmentEnd) {
+        throw new BadRequestException(
+          `Impossible de créer ce CRA : l’affectation s’est terminée le ${assignment.endDate}`,
+        );
+      }
+    }
+  }
+
+    private validateCraDaysWithAssignment(
+    days: Array<{ date?: string }>,
+    assignment: CollaboratorAssignment,
+  ): void {
+    const assignmentStart = this.toJsDate(assignment.startDate);
+    const assignmentEnd = assignment.endDate
+      ? this.toJsDate(assignment.endDate)
+      : null;
+
+    for (const day of days) {
+      if (!day.date) {
+        throw new BadRequestException(
+          'Chaque journée doit contenir une date',
+        );
+      }
+
+      const currentDate = this.toJsDate(day.date);
+
+      if (currentDate < assignmentStart) {
+        throw new BadRequestException(
+          `La date ${day.date} est avant le début de l’affectation`,
+        );
+      }
+
+      if (assignmentEnd && currentDate > assignmentEnd) {
+        throw new BadRequestException(
+          `La date ${day.date} est après la fin de l’affectation`,
+        );
+      }
+    }
   }
 }

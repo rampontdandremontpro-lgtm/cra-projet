@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
-import { getAllCra, getCraPdf } from '../../services/craApi';
+import { downloadCraPdf, getMyCra } from '../../services/craApi';
 
 import '../../styles/dashboard.css';
 
@@ -18,40 +18,46 @@ export default function DashboardPage() {
 
   const loadCra = async () => {
     try {
-      const data = await getAllCra();
+      const data = await getMyCra();
       setCras(data);
     } catch (error) {
       console.error(error);
+      alert("Impossible de charger vos CRA.");
     } finally {
       setLoadingCra(false);
     }
   };
 
   const handleViewCra = async (cra) => {
-    if (cra.statut === 'BROUILLON') {
+    if (
+      cra.statut === 'BROUILLON' ||
+      cra.statut === 'REFUSE_CLIENT' ||
+      cra.statut === 'REFUSE_ADMIN'
+    ) {
       navigate(`/mes-cra/${cra.id}`);
       return;
     }
 
     try {
-      const pdfBlob = await getCraPdf(cra.id);
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      await downloadCraPdf(cra);
     } catch (error) {
       console.error('Erreur PDF :', error);
       alert("Impossible d'ouvrir le PDF.");
     }
   };
 
-  const brouillons = cras.filter((c) => c.statut === 'BROUILLON').length;
-  const soumis = cras.filter((c) => c.statut === 'SOUMIS_CLIENT').length;
+  const brouillons = cras.filter((cra) => cra.statut === 'BROUILLON').length;
+
+  const soumis = cras.filter(
+    (cra) => cra.statut === 'SOUMIS_CLIENT',
+  ).length;
 
   const valides = cras.filter(
-    (c) => c.statut === 'VALIDE_ADMIN' || c.statut === 'VALIDE_CLIENT'
+    (cra) => cra.statut === 'VALIDE_ADMIN' || cra.statut === 'VALIDE_CLIENT',
   ).length;
 
   const refuses = cras.filter(
-    (c) => c.statut === 'REFUSE_ADMIN' || c.statut === 'REFUSE_CLIENT'
+    (cra) => cra.statut === 'REFUSE_ADMIN' || cra.statut === 'REFUSE_CLIENT',
   ).length;
 
   const getMonthName = (monthNumber) =>
@@ -69,19 +75,32 @@ export default function DashboardPage() {
       'Octobre',
       'Novembre',
       'Décembre',
-    ][monthNumber];
+    ][Number(monthNumber)] || '-';
 
   const getStatusLabel = (statut) => {
     const labels = {
       BROUILLON: 'Brouillon',
-      SOUMIS_CLIENT: 'Soumis',
+      SOUMIS_CLIENT: 'Soumis au client',
       VALIDE_CLIENT: 'Validé client',
       VALIDE_ADMIN: 'Validé admin',
       REFUSE_CLIENT: 'Refusé client',
       REFUSE_ADMIN: 'Refusé admin',
+      ARCHIVE: 'Archivé',
     };
 
     return labels[statut] || statut;
+  };
+
+  const getSubmissionDate = (cra) => {
+    const date = cra.date_soumission || cra.dateSoumission;
+
+    if (!date) return '-';
+
+    return new Date(date).toLocaleDateString('fr-FR');
+  };
+
+  const getCreationDate = (cra) => {
+    return cra.created_at || cra.createdAt || null;
   };
 
   return (
@@ -126,6 +145,7 @@ export default function DashboardPage() {
             </div>
 
             <button
+              type="button"
               className="see-all-btn"
               onClick={() => navigate('/mes-cra')}
             >
@@ -150,48 +170,56 @@ export default function DashboardPage() {
               </thead>
 
               <tbody>
-  {[...cras]
-    .sort(
-      (a, b) =>
-        new Date(b.created_at) - new Date(a.created_at)
-    )
-    .slice(0, 5)
-    .map((cra) => (
-      <tr key={cra.id}>
-        <td>
-          <div className="month-cell">
-            <span className="month-icon">📅</span>
-            {getMonthName(cra.mois)}
-          </div>
-        </td>
+                {[...cras]
+                  .sort((a, b) => {
+                    const dateA = getCreationDate(a)
+                      ? new Date(getCreationDate(a))
+                      : new Date(0);
 
-        <td>{cra.annee}</td>
+                    const dateB = getCreationDate(b)
+                      ? new Date(getCreationDate(b))
+                      : new Date(0);
 
-        <td>
-          <span
-            className={`status-badge status-${cra.statut.toLowerCase()}`}
-          >
-            {getStatusLabel(cra.statut)}
-          </span>
-        </td>
+                    return dateB - dateA;
+                  })
+                  .slice(0, 5)
+                  .map((cra) => (
+                    <tr key={cra.id}>
+                      <td>
+                        <div className="month-cell">
+                          <span className="month-icon">📅</span>
+                          {getMonthName(cra.mois)}
+                        </div>
+                      </td>
 
-        <td>
-          {cra.date_soumission
-            ? new Date(cra.date_soumission).toLocaleDateString('fr-FR')
-            : '-'}
-        </td>
+                      <td>{cra.annee}</td>
 
-        <td>
-          <button
-            className="view-btn"
-            onClick={() => handleViewCra(cra)}
-          >
-            👁 Voir le CRA
-          </button>
-        </td>
-      </tr>
-    ))}
-</tbody>
+                      <td>
+                        <span
+                          className={`status-badge status-${cra.statut.toLowerCase()}`}
+                        >
+                          {getStatusLabel(cra.statut)}
+                        </span>
+                      </td>
+
+                      <td>{getSubmissionDate(cra)}</td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="view-btn"
+                          onClick={() => handleViewCra(cra)}
+                        >
+                          {cra.statut === 'BROUILLON' ||
+                          cra.statut === 'REFUSE_CLIENT' ||
+                          cra.statut === 'REFUSE_ADMIN'
+                            ? '✏️ Modifier'
+                            : '👁 Voir le PDF'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
             </table>
           )}
         </section>

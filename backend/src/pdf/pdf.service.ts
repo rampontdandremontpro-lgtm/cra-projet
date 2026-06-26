@@ -74,13 +74,23 @@ export class PdfService {
         ? `${cra.adminValidator.prenom ?? ''} ${cra.adminValidator.nom ?? ''}`.trim()
         : '-';
 
-      const formatDate = (date?: string | Date) => {
-        if (!date) return '-';
+      const formatDate = (date?: string | Date | null): string => {
+  if (!date) return '-';
 
-        const d = new Date(date);
+  if (typeof date === 'string') {
+    const datePart = date.split('T')[0];
+    const parts = datePart.split('-');
 
-        return d.toLocaleDateString('fr-FR');
-      };
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      return `${day}/${month}/${year}`;
+    }
+
+    return date;
+  }
+
+  return date.toLocaleDateString('fr-FR');
+};
 
       const totalByType = (type: string) =>
         jours

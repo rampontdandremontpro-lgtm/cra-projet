@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
-import { getAllCra, getCraPdf, deleteCra } from '../../services/craApi';
+import { deleteCra, downloadCraPdf, getMyCra } from '../../services/craApi';
 
 import '../../styles/cra.css';
 import '../../styles/dashboard.css';
@@ -19,10 +19,11 @@ export default function CraListPage() {
 
   const loadCra = async () => {
     try {
-      const data = await getAllCra();
+      const data = await getMyCra();
       setCras(data);
     } catch (error) {
       console.error(error);
+      alert("Impossible de charger la liste des CRA.");
     } finally {
       setLoading(false);
     }
@@ -43,26 +44,47 @@ export default function CraListPage() {
       'Octobre',
       'Novembre',
       'Décembre',
-    ][monthNumber];
+    ][Number(monthNumber)] || '-';
 
   const getStatusLabel = (statut) => {
     const labels = {
       BROUILLON: 'Brouillon',
-      SOUMIS_CLIENT: 'Soumis',
+      SOUMIS_CLIENT: 'Soumis au client',
       VALIDE_CLIENT: 'Validé client',
       VALIDE_ADMIN: 'Validé admin',
       REFUSE_CLIENT: 'Refusé client',
       REFUSE_ADMIN: 'Refusé admin',
+      ARCHIVE: 'Archivé',
     };
 
     return labels[statut] || statut;
   };
 
+  const getServiceLabel = (cra) => {
+    if (cra.client?.nom) {
+      return cra.client.nom;
+    }
+
+    if (cra.service) {
+      return [cra.service.company?.nom, cra.service.nom]
+        .filter(Boolean)
+        .join(' - ');
+    }
+
+    return '-';
+  };
+
+  const getSubmissionDate = (cra) => {
+    const date = cra.date_soumission || cra.dateSoumission;
+
+    if (!date) return '-';
+
+    return new Date(date).toLocaleDateString('fr-FR');
+  };
+
   const handleViewCra = async (cra) => {
     try {
-      const pdfBlob = await getCraPdf(cra.id);
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      await downloadCraPdf(cra);
     } catch (error) {
       console.error(error);
       alert("Impossible d'ouvrir le PDF.");
@@ -71,7 +93,7 @@ export default function CraListPage() {
 
   const handleDeleteCra = async (cra) => {
     const confirmDelete = confirm(
-      `Voulez-vous vraiment supprimer le CRA de ${getMonthName(cra.mois)} ${cra.annee} ?`
+      `Voulez-vous vraiment supprimer le CRA de ${getMonthName(cra.mois)} ${cra.annee} ?`,
     );
 
     if (!confirmDelete) return;
@@ -80,7 +102,7 @@ export default function CraListPage() {
       await deleteCra(cra.id);
 
       setCras((currentCras) =>
-        currentCras.filter((item) => item.id !== cra.id)
+        currentCras.filter((item) => item.id !== cra.id),
       );
     } catch (error) {
       console.error(error);
@@ -98,6 +120,14 @@ export default function CraListPage() {
             <p className="breadcrumb">Tableau de bord / Mes CRA</p>
             <h1>Mes CRA</h1>
           </div>
+
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={() => navigate('/nouveau-cra')}
+          >
+            + Nouveau CRA
+          </button>
         </div>
 
         <section className="dashboard-panel cra-panel">
@@ -122,7 +152,7 @@ export default function CraListPage() {
                 <tr>
                   <th>Mois</th>
                   <th>Année</th>
-                  <th>Client</th>
+                  <th>Service / Client</th>
                   <th>Statut</th>
                   <th>Date de soumission</th>
                   <th>Actions</th>
@@ -141,7 +171,7 @@ export default function CraListPage() {
 
                     <td>{cra.annee}</td>
 
-                    <td>{cra.client?.nom || '-'}</td>
+                    <td>{getServiceLabel(cra)}</td>
 
                     <td>
                       <span
@@ -151,13 +181,7 @@ export default function CraListPage() {
                       </span>
                     </td>
 
-                    <td>
-                      {cra.date_soumission
-                        ? new Date(cra.date_soumission).toLocaleDateString(
-                            'fr-FR'
-                          )
-                        : '-'}
-                    </td>
+                    <td>{getSubmissionDate(cra)}</td>
 
                     <td>
                       <div className="actions-cell">
@@ -165,12 +189,14 @@ export default function CraListPage() {
                           'SOUMIS_CLIENT',
                           'VALIDE_CLIENT',
                           'VALIDE_ADMIN',
+                          'ARCHIVE',
                         ].includes(cra.statut) && (
                           <button
+                            type="button"
                             className="view-btn"
                             onClick={() => handleViewCra(cra)}
                           >
-                            👁 Voir
+                            👁 PDF
                           </button>
                         )}
 
@@ -180,6 +206,7 @@ export default function CraListPage() {
                           'REFUSE_ADMIN',
                         ].includes(cra.statut) && (
                           <button
+                            type="button"
                             className="edit-btn"
                             onClick={() => navigate(`/mes-cra/${cra.id}`)}
                           >
@@ -189,6 +216,7 @@ export default function CraListPage() {
 
                         {cra.statut === 'BROUILLON' && (
                           <button
+                            type="button"
                             className="delete-btn"
                             onClick={() => handleDeleteCra(cra)}
                           >

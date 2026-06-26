@@ -20,16 +20,13 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginDto) {
-    const user = await this.usersRepository.findOne({
-      where: {
-        email: loginDto.email,
-      },
-      relations: {
-        service: {
-          company: true,
-        },
-      },
-    });
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .leftJoinAndSelect('user.service', 'service')
+      .leftJoinAndSelect('service.company', 'company')
+      .where('user.email = :email', { email: loginDto.email })
+      .getOne();
 
     if (!user) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
@@ -66,6 +63,7 @@ export class AuthService {
         role: user.role,
         contractType: user.contractType,
         service: user.service,
+        isActive: user.isActive,
       },
     };
   }

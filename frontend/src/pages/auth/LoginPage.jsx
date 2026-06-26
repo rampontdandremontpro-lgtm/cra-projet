@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { loginUser } from '../../services/authApi';
 import { useAuth } from '../../context/AuthContext';
 import { getDashboardPathByRole } from '../../utils/roleRedirect';
 
@@ -33,14 +32,18 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await loginUser(form.email, form.password);
+      const user = await login({
+        email: form.email,
+        password: form.password,
+      });
 
-      login(response.user, response.access_token);
-
-      navigate(getDashboardPathByRole(response.user.role));
+      navigate(getDashboardPathByRole(user.role));
     } catch (err) {
       console.error(err);
-      setError('Email ou mot de passe incorrect.');
+
+      setError(
+        err.response?.data?.message || 'Email ou mot de passe incorrect.',
+      );
     } finally {
       setLoading(false);
     }
