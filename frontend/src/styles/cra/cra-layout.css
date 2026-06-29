@@ -83,3 +83,21 @@
   letter-spacing: normal;
   font-weight: 500;
 }
+
+.cra-page {
+  width: 100%;
+  max-width: 100%;
+}
+
+.cra-create-layout {
+  grid-template-columns: minmax(0, 1fr) 260px;
+  align-items: flex-start;
+}
+
+.cra-create-layout > div {
+  min-width: 0;
+}
+
+.cra-main-card {
+  min-width: 0;
+}

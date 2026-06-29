@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
+import CraTimesheetTable from '../../components/cra/CraTimesheetTable';
+
 import { getMyActiveAssignment } from '../../services/collaboratorAssignmentApi';
 import {
-  deleteCra,
   downloadCraPdf,
   getCraById,
   submitCra,
@@ -13,172 +14,329 @@ import {
 import { getHolidaysByYear } from '../../services/holidayApi';
 
 import {
-  calculateCraTotals,
-  getLastDayOfMonth,
-  getMonthName,
-  getStatusLabel,
-} from '../../utils/craUtils';
+  CRA_DAY_TYPES,
+  MONTH_NAMES,
+  buildCraPayloadFromTimesheet,
+  generateRowsFromExistingCra,
+  getDayTotal,
+  getSummaryTotals,
+} from '../../utils/craTimesheetUtils';
 
 import '../../styles/dashboard.css';
 import '../../styles/cra.css';
 
-const normalizeDate = (dateString) => {
-  return String(dateString).split('T')[0];
-};
-
-const buildDate = (year, month, day) => {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(
-    2,
-    '0',
-  )}`;
-};
-
-const formatDate = (dateString) => {
-  const [year, month, day] = normalizeDate(dateString).split('-');
-  return `${day}/${month}/${year}`;
-};
-
-const isWeekend = (year, month, day) => {
-  const date = new Date(year, month - 1, day);
-  const dayOfWeek = date.getDay();
-
-  return dayOfWeek === 0 || dayOfWeek === 6;
-};
-
-const isDateInsideAssignment = (dateString, assignment) => {
-  if (!assignment?.startDate) return true;
-
-  const date = normalizeDate(dateString);
-  const startDate = normalizeDate(assignment.startDate);
-  const endDate = assignment.endDate ? normalizeDate(assignment.endDate) : null;
-
-  if (date < startDate) return false;
-  if (endDate && date > endDate) return false;
-
-  return true;
-};
-
-const canEditCra = (statut) => {
-  return (
-    statut === 'BROUILLON' ||
-    statut === 'REFUSE_CLIENT' ||
-    statut === 'REFUSE_ADMIN'
-  );
-};
-
-const generateWorkingDays = (
-  mois,
-  annee,
-  assignment,
-  holidayDates,
-  existingDays = [],
-) => {
-  const holidaysSet = new Set(holidayDates.map(normalizeDate));
-  const existingDaysByDate = new Map();
-
-  existingDays.forEach((day) => {
-    if (day.date) {
-      existingDaysByDate.set(normalizeDate(day.date), day);
-    }
-  });
-
-  const lastDay = getLastDayOfMonth(annee, mois);
-  const days = [];
-
-  for (let day = 1; day <= lastDay; day += 1) {
-    const dateString = buildDate(annee, mois, day);
-
-    if (isWeekend(annee, mois, day)) continue;
-    if (holidaysSet.has(dateString)) continue;
-    if (!isDateInsideAssignment(dateString, assignment)) continue;
-
-    const existingDay = existingDaysByDate.get(dateString);
-
-    days.push({
-      id: existingDay?.id,
-      date: dateString,
-      type: existingDay?.type || 'TRAVAIL',
-      duree: Number(existingDay?.duree || 1),
-      commentaire: existingDay?.commentaire || '',
-    });
-  }
-
-  return days;
-};
-
-export default function CraDetailPage() {
+function CraDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const MAX_ACTIVITY_COLUMNS = 7;
+
   const [cra, setCra] = useState(null);
-  const [jours, setJours] = useState([]);
+  const [mois, setMois] = useState('');
+  const [annee, setAnnee] = useState('');
+
   const [assignment, setAssignment] = useState(null);
   const [holidayDates, setHolidayDates] = useState([]);
 
+  const [activityColumns, setActivityColumns] = useState([]);
+  const [rows, setRows] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+
+  const [toast, setToast] = useState(null);
+
+  const summaryTotals = useMemo(() => getSummaryTotals(rows), [rows]);
+
+  const totalSaisi =
+    summaryTotals.travail +
+    summaryTotals.conges +
+    summaryTotals.absences +
+    summaryTotals.rtt;
+
+  const isEditable =
+    cra?.statut === 'BROUILLON' ||
+    cra?.statut === 'REFUSE_CLIENT' ||
+    cra?.statut === 'REFUSE_ADMIN';
 
   useEffect(() => {
     loadCra();
   }, [id]);
 
-  useEffect(() => {
-    if (!error && !success) return;
+  const showToast = (type, message) => {
+    setToast({ type, message });
 
-    const timer = setTimeout(() => {
-      setError('');
-      setSuccess('');
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [error, success]);
+    window.setTimeout(() => {
+      setToast(null);
+    }, 3500);
+  };
 
   const loadCra = async () => {
     try {
-      const data = await getCraById(id);
-      const currentDays = data.jours || data.days || [];
+      setLoading(true);
 
-      setCra(data);
+      const craData = await getCraById(id);
+      const activeAssignment = await getMyActiveAssignment();
 
-      if (canEditCra(data.statut)) {
-        const activeAssignment = await getMyActiveAssignment();
-        const holidays = await getHolidaysByYear(data.annee);
-        const dates = holidays.map((holiday) => holiday.date);
+      setCra(craData);
+      setMois(Number(craData.mois));
+      setAnnee(Number(craData.annee));
+      setAssignment(activeAssignment);
 
-        setAssignment(activeAssignment);
-        setHolidayDates(dates);
+      const holidays = await getHolidaysByYear(Number(craData.annee));
+      const dates = holidays.map((holiday) =>
+        String(holiday.date).split('T')[0],
+      );
 
-        const generatedDays = generateWorkingDays(
-          data.mois,
-          data.annee,
-          activeAssignment,
-          dates,
-          currentDays,
-        );
+      setHolidayDates(dates);
 
-        setJours(generatedDays);
-      } else {
-        setJours(currentDays);
-      }
+      const normalized = generateRowsFromExistingCra({
+        cra: craData,
+        assignment: activeAssignment,
+        holidayDates: dates,
+      });
+
+      setActivityColumns(normalized.activityColumns);
+      setRows(normalized.rows);
     } catch (err) {
-      console.error(err);
-      setError('Impossible de charger le CRA.');
+      showToast(
+        'error',
+        err.response?.data?.message || 'Impossible de charger le CRA.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const editable = canEditCra(cra?.statut);
+  const regenerateRows = async (nextMois = mois, nextAnnee = annee) => {
+    if (!cra || !assignment) return;
 
-  const totals = useMemo(() => calculateCraTotals(jours), [jours]);
+    try {
+      const holidays = await getHolidaysByYear(Number(nextAnnee));
+      const dates = holidays.map((holiday) =>
+        String(holiday.date).split('T')[0],
+      );
 
-  const getServiceLabel = () => {
-    if (cra?.client?.nom) {
-      return cra.client.nom;
+      setHolidayDates(dates);
+
+      const normalized = generateRowsFromExistingCra({
+        cra: {
+          ...cra,
+          mois: Number(nextMois),
+          annee: Number(nextAnnee),
+          days: rows,
+          activityColumns,
+        },
+        assignment,
+        holidayDates: dates,
+      });
+
+      setRows(normalized.rows);
+    } catch {
+      const normalized = generateRowsFromExistingCra({
+        cra: {
+          ...cra,
+          mois: Number(nextMois),
+          annee: Number(nextAnnee),
+          days: rows,
+          activityColumns,
+        },
+        assignment,
+        holidayDates,
+      });
+
+      setRows(normalized.rows);
+    }
+  };
+
+  const handleChangeMois = (value) => {
+    const nextMois = Number(value);
+    setMois(nextMois);
+    regenerateRows(nextMois, annee);
+  };
+
+  const handleChangeAnnee = (value) => {
+    const nextAnnee = Number(value);
+    setAnnee(nextAnnee);
+    regenerateRows(mois, nextAnnee);
+  };
+
+  const addActivityColumn = () => {
+    if (activityColumns.length >= MAX_ACTIVITY_COLUMNS) {
+      showToast('error', 'Tu peux ajouter au maximum 7 activités.');
+      return;
     }
 
+    const newColumn = {
+      id: `local-${Date.now()}`,
+      nom: '',
+      orderIndex: activityColumns.length,
+    };
+
+    setActivityColumns((previousColumns) => [...previousColumns, newColumn]);
+
+    setRows((previousRows) =>
+      previousRows.map((row) => ({
+        ...row,
+        activities: {
+          ...(row.activities || {}),
+          [newColumn.id]: '',
+        },
+      })),
+    );
+  };
+
+  const validateTimesheet = () => {
+    const cleanColumns = activityColumns.map((column) => ({
+      ...column,
+      nom: column.nom.trim(),
+    }));
+
+    if (cleanColumns.some((column) => !column.nom)) {
+      return 'Chaque colonne d’activité doit avoir un nom avant la soumission.';
+    }
+
+    for (const row of rows) {
+      if (row.disabled) continue;
+
+      const total = getDayTotal(row);
+
+      if (row.type === CRA_DAY_TYPES.TRAVAIL && total <= 0) {
+        return `La durée du ${row.date} doit être supérieure à 0 avant la soumission.`;
+      }
+
+      if (row.type === CRA_DAY_TYPES.TRAVAIL && total > 1) {
+        return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
+      }
+
+      if (
+        row.type === CRA_DAY_TYPES.ABSENCE &&
+        !String(row.commentaire || '').trim()
+      ) {
+        return `Le motif d’absence est obligatoire pour le ${row.date}.`;
+      }
+
+      for (const value of Object.values(row.activities || {})) {
+        if (value === '' || value === null || value === undefined) continue;
+
+        const numberValue = Number(value);
+
+        if (Number.isNaN(numberValue)) {
+          return `Une durée saisie le ${row.date} est invalide.`;
+        }
+
+        if (row.type === CRA_DAY_TYPES.TRAVAIL) {
+          if (numberValue < 0.1 || numberValue > 1) {
+            return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
+          }
+        }
+      }
+    }
+
+    return '';
+  };
+
+  const buildPayload = () => {
+    return buildCraPayloadFromTimesheet({
+      mois,
+      annee,
+      activityColumns: activityColumns.map((column, index) => ({
+        ...column,
+        nom: column.nom.trim(),
+        orderIndex: index,
+      })),
+      rows,
+    });
+  };
+
+  const handleSaveDraft = async () => {
+    try {
+      setSaving(true);
+
+      const payload = buildPayload();
+      await updateCra(cra.id, payload);
+
+      showToast('success', 'CRA enregistré en brouillon.');
+
+      window.setTimeout(() => {
+        navigate('/mes-cra');
+      }, 700);
+    } catch (err) {
+      showToast(
+        'error',
+        err.response?.data?.message || "Impossible d'enregistrer le CRA.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveAndSubmit = async () => {
+    try {
+      setSaving(true);
+
+      const validationError = validateTimesheet();
+
+      if (validationError) {
+        showToast('error', validationError);
+        return;
+      }
+
+      const payload = buildPayload();
+      const updatedCra = await updateCra(cra.id, payload);
+
+      await submitCra(updatedCra.id);
+
+      showToast('success', 'CRA soumis au client.');
+
+      window.setTimeout(() => {
+        navigate('/mes-cra');
+      }, 700);
+    } catch (err) {
+      showToast(
+        'error',
+        err.response?.data?.message || 'Impossible de soumettre le CRA.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      await downloadCraPdf(cra);
+    } catch (err) {
+      showToast(
+        'error',
+        err.response?.data?.message || 'Impossible de télécharger le PDF.',
+      );
+    }
+  };
+
+  const getStatusLabel = () => {
+    const labels = {
+      BROUILLON: 'Brouillon',
+      SOUMIS_CLIENT: 'Soumis au client',
+      REFUSE_CLIENT: 'Refusé par le client',
+      VALIDE_CLIENT: 'Validé par le client',
+      REFUSE_ADMIN: 'Refusé par l’admin',
+      VALIDE_ADMIN: 'Validé par l’admin',
+      ARCHIVE: 'Archivé',
+    };
+
+    return labels[cra?.statut] || cra?.statut || '-';
+  };
+
+  const getStatusClassName = () => {
+    if (cra?.statut === 'BROUILLON') return 'status-draft';
+    if (cra?.statut?.includes('REFUSE')) return 'status-refused';
+    if (cra?.statut?.includes('VALIDE')) return 'status-approved';
+    if (cra?.statut === 'SOUMIS_CLIENT') return 'status-pending';
+
+    return 'status-draft';
+  };
+
+  const getServiceLabel = () => {
     if (cra?.service) {
       return [cra.service.company?.nom, cra.service.nom]
         .filter(Boolean)
@@ -188,153 +346,10 @@ export default function CraDetailPage() {
     return '-';
   };
 
-  const handleDayChange = (index, field, value) => {
-    const updatedDays = [...jours];
-
-    updatedDays[index] = {
-      ...updatedDays[index],
-      [field]: field === 'duree' ? Number(value) : value,
-    };
-
-    setJours(updatedDays);
-  };
-
-  const reloadWorkingDays = async () => {
-    if (!cra) return;
-
-    try {
-      let currentAssignment = assignment;
-      let currentHolidayDates = holidayDates;
-
-      if (!currentAssignment) {
-        currentAssignment = await getMyActiveAssignment();
-        setAssignment(currentAssignment);
-      }
-
-      if (currentHolidayDates.length === 0) {
-        const holidays = await getHolidaysByYear(cra.annee);
-        currentHolidayDates = holidays.map((holiday) => holiday.date);
-        setHolidayDates(currentHolidayDates);
-      }
-
-      const generatedDays = generateWorkingDays(
-        cra.mois,
-        cra.annee,
-        currentAssignment,
-        currentHolidayDates,
-        jours,
-      );
-
-      setJours(generatedDays);
-      setSuccess('Jours ouvrés rechargés avec succès.');
-    } catch (err) {
-      console.error(err);
-      setError('Impossible de recharger les jours ouvrés.');
-    }
-  };
-
-  const buildPayload = () => ({
-    mois: cra.mois,
-    annee: cra.annee,
-    jours: jours.map((jour) => ({
-      date: jour.date,
-      type: jour.type,
-      duree: Number(jour.duree),
-      commentaire: jour.commentaire || '',
-    })),
-  });
-
-  const validateBeforeSave = () => {
-    if (jours.length === 0) {
-      setError('Le CRA doit contenir au moins une journée.');
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSave = async () => {
-    if (!validateBeforeSave()) return;
-
-    setSaving(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      await updateCra(id, buildPayload());
-
-      const refreshedCra = await getCraById(id);
-      const refreshedDays = refreshedCra.jours || refreshedCra.days || jours;
-
-      const generatedDays = generateWorkingDays(
-        refreshedCra.mois,
-        refreshedCra.annee,
-        assignment,
-        holidayDates,
-        refreshedDays,
-      );
-
-      setCra(refreshedCra);
-      setJours(generatedDays);
-
-      setSuccess('CRA enregistré avec succès.');
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.response?.data?.message || "Impossible d'enregistrer le CRA.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!validateBeforeSave()) return;
-
-    setSaving(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      await updateCra(id, buildPayload());
-      await submitCra(id);
-
-      navigate('/mes-cra');
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.response?.data?.message ||
-          'Impossible de soumettre le CRA. Vérifie les jours déclarés.',
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm('Voulez-vous vraiment supprimer ce brouillon ?')) return;
-
-    try {
-      await deleteCra(id);
-      navigate('/mes-cra');
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.response?.data?.message || 'Impossible de supprimer le CRA.',
-      );
-    }
-  };
-
-  const handlePdf = async () => {
-    try {
-      await downloadCraPdf(cra);
-    } catch (err) {
-      console.error(err);
-      setError("Impossible de télécharger le PDF.");
-    }
+  const getCollaboratorName = () => {
+    return [cra?.collaborateur?.prenom, cra?.collaborateur?.nom]
+      .filter(Boolean)
+      .join(' ');
   };
 
   if (loading) {
@@ -343,7 +358,9 @@ export default function CraDetailPage() {
         <Sidebar />
 
         <main className="dashboard-content">
-          <p className="empty-text">Chargement du CRA...</p>
+          <div className="cra-page">
+            <p>Chargement du CRA...</p>
+          </div>
         </main>
       </div>
     );
@@ -355,7 +372,9 @@ export default function CraDetailPage() {
         <Sidebar />
 
         <main className="dashboard-content">
-          <p className="empty-text">CRA introuvable.</p>
+          <div className="cra-page">
+            <p>CRA introuvable.</p>
+          </div>
         </main>
       </div>
     );
@@ -366,256 +385,213 @@ export default function CraDetailPage() {
       <Sidebar />
 
       <main className="dashboard-content">
-        <div className="cra-page-title">
-          <p className="breadcrumb">Mes CRA / Détail CRA</p>
+        <div className="cra-page">
+          <div className="cra-page-title">
+            <h1>
+              CRA — {MONTH_NAMES[mois]} {annee}
+            </h1>
+          </div>
 
-          <h1>
-            CRA — {getMonthName(cra.mois)} {cra.annee}
-          </h1>
-        </div>
+          {cra.motifRefusClient && (
+            <div className="refusal-message">
+              <strong>Motif de refus client :</strong> {cra.motifRefusClient}
+            </div>
+          )}
 
-        <div className="cra-create-layout">
-          <div>
-            <section className="cra-main-card">
-              <div className="cra-section-header">
-                <h2>Informations générales</h2>
+          {cra.motifRefusAdmin && (
+            <div className="refusal-message">
+              <strong>Motif de refus admin :</strong> {cra.motifRefusAdmin}
+            </div>
+          )}
+
+          <div className="cra-create-layout">
+            <div>
+              <div className="cra-main-card">
+                <div className="cra-section-header">
+                  <h2>Informations générales</h2>
+                </div>
+
+                <div className="cra-info-grid">
+                  <div>
+                    <label>Collaborateur</label>
+                    <input type="text" value={getCollaboratorName()} disabled />
+                  </div>
+
+                  <div>
+                    <label>Service / Client</label>
+                    <input type="text" value={getServiceLabel()} disabled />
+                  </div>
+
+                  <div>
+                    <label>Mois</label>
+                    <select
+                      value={mois}
+                      disabled={!isEditable || saving}
+                      onChange={(event) => handleChangeMois(event.target.value)}
+                    >
+                      {MONTH_NAMES.map((monthName, index) =>
+                        index === 0 ? null : (
+                          <option key={monthName} value={index}>
+                            {monthName}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label>Année</label>
+                    <input
+                      type="number"
+                      value={annee}
+                      min="2025"
+                      disabled={!isEditable || saving}
+                      onChange={(event) => handleChangeAnnee(event.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="cra-info-grid">
-                <label>
-                  Collaborateur
-                  <input
-                    type="text"
-                    value={`${cra.collaborateur?.prenom || ''} ${
-                      cra.collaborateur?.nom || ''
-                    }`}
-                    disabled
-                    readOnly
-                  />
-                </label>
-
-                <label>
-                  Service / Client
-                  <input
-                    type="text"
-                    value={getServiceLabel()}
-                    disabled
-                    readOnly
-                  />
-                </label>
-
-                <label>
-                  Mois
-                  <input
-                    type="text"
-                    value={getMonthName(cra.mois)}
-                    disabled
-                    readOnly
-                  />
-                </label>
-
-                <label>
-                  Année
-                  <input type="text" value={cra.annee} disabled readOnly />
-                </label>
-              </div>
-            </section>
-
-            <section className="cra-main-card">
-              <div className="cra-section-header">
-                <div>
-                  <h2>Saisie des activités</h2>
-
-                  {editable && (
+              <div className="cra-main-card">
+                <div className="cra-section-header">
+                  <div>
+                    <h2>
+                      {isEditable
+                        ? 'Modifier les activités'
+                        : 'Activités du mois'}
+                    </h2>
                     <p className="cra-helper-text">
-                      Les jours ouvrés du mois sont générés automatiquement.
+                      Les week-ends, jours fériés et jours hors affectation sont
+                      grisés automatiquement.
                     </p>
+                  </div>
+
+                  {isEditable && (
+                    <div className="cra-header-actions">
+                      <button
+                        type="button"
+                        className="add-line-btn"
+                        onClick={addActivityColumn}
+                        disabled={saving}
+                      >
+                        + Ajouter une activité
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {editable && (
+                <CraTimesheetTable
+                  rows={rows}
+                  setRows={setRows}
+                  activityColumns={activityColumns}
+                  setActivityColumns={setActivityColumns}
+                  readOnly={!isEditable}
+                />
+
+                <div className="cra-form-actions">
                   <button
                     type="button"
-                    className="add-line-btn"
-                    onClick={reloadWorkingDays}
+                    className="secondary-btn"
+                    onClick={() => navigate('/mes-cra')}
+                    disabled={saving}
                   >
-                    Recharger les jours ouvrés
+                    Retour
                   </button>
-                )}
-              </div>
 
-              <div className="cra-form-table">
-                <div className="cra-form-head">
-                  <span>Date</span>
-                  <span>Type</span>
-                  <span>Durée</span>
-                  <span>Commentaire</span>
-                  <span></span>
-                </div>
-
-                {jours.map((jour, index) => (
-                  <div className="cra-form-row" key={jour.date}>
-                    <strong>{formatDate(jour.date)}</strong>
-
-                    <select
-                      className={`type-select type-${jour.type.toLowerCase()}`}
-                      value={jour.type}
-                      disabled={!editable}
-                      onChange={(e) =>
-                        handleDayChange(index, 'type', e.target.value)
-                      }
-                    >
-                      <option value="TRAVAIL">Travail</option>
-                      <option value="CONGE">Congé</option>
-                      <option value="ABSENCE">Absence</option>
-                      <option value="RTT">RTT</option>
-                    </select>
-
-                    <select
-                      value={jour.duree}
-                      disabled={!editable}
-                      onChange={(e) =>
-                        handleDayChange(index, 'duree', e.target.value)
-                      }
-                    >
-                      <option value={1}>1 jour</option>
-                      <option value={0.5}>0.5 jour</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      placeholder="Ajouter un commentaire..."
-                      value={jour.commentaire || ''}
-                      disabled={!editable}
-                      onChange={(e) =>
-                        handleDayChange(index, 'commentaire', e.target.value)
-                      }
-                    />
-
-                    <span></span>
-                  </div>
-                ))}
-              </div>
-
-              {error && <div className="cra-error">{error}</div>}
-              {success && <div className="cra-success">{success}</div>}
-
-              <div className="cra-form-actions">
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => navigate('/mes-cra')}
-                >
-                  Retour
-                </button>
-
-                {!editable && (
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    onClick={handlePdf}
-                  >
-                    Télécharger le PDF
-                  </button>
-                )}
-
-                {editable && cra.statut === 'BROUILLON' && (
-                  <button
-                    type="button"
-                    className="delete-draft-btn"
-                    onClick={handleDelete}
-                  >
-                    Supprimer
-                  </button>
-                )}
-
-                {editable && (
-                  <>
+                  {!isEditable && (
                     <button
                       type="button"
                       className="secondary-btn"
-                      onClick={handleSave}
+                      onClick={handleDownloadPdf}
                       disabled={saving}
                     >
-                      {saving ? 'Enregistrement...' : 'Enregistrer'}
+                      Télécharger PDF
                     </button>
+                  )}
 
-                    <button
-                      type="button"
-                      className="primary-btn"
-                      onClick={handleSubmit}
-                      disabled={saving}
-                    >
-                      {saving ? 'Soumission...' : 'Soumettre le CRA'}
-                    </button>
-                  </>
-                )}
+                  {isEditable && (
+                    <>
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={handleSaveDraft}
+                        disabled={saving}
+                      >
+                        {saving
+                          ? 'Enregistrement...'
+                          : 'Enregistrer en brouillon'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        onClick={handleSaveAndSubmit}
+                        disabled={saving}
+                      >
+                        {saving ? 'Soumission...' : 'Enregistrer et soumettre'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </section>
+            </div>
+
+            <aside className="cra-side-panel">
+              <div className="side-card">
+                <h3>Statut</h3>
+                <span className={`status-side ${getStatusClassName()}`}>
+                  {getStatusLabel()}
+                </span>
+              </div>
+
+              <div className="side-card">
+                <h3>Résumé du mois</h3>
+
+                <div className="summary-line blue">
+                  <span>Jours travaillés</span>
+                  <strong>{summaryTotals.travail.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-line green">
+                  <span>Congés</span>
+                  <strong>{summaryTotals.conges.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-line red">
+                  <span>Absences</span>
+                  <strong>{summaryTotals.absences.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-line purple">
+                  <span>RTT</span>
+                  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-total">
+                  <span>Total saisi</span>
+                  <strong>{totalSaisi.toFixed(1)} jour(s)</strong>
+                </div>
+              </div>
+
+              <div className="side-card">
+                <h3>Types d’activité</h3>
+                <div className="legend-line blue">Travail</div>
+                <div className="legend-line green">Congé</div>
+                <div className="legend-line red">Absence</div>
+                <div className="legend-line purple">RTT</div>
+              </div>
+            </aside>
           </div>
-
-          <aside className="cra-side-panel">
-            <section className="side-card">
-              <h3>Statut</h3>
-
-              <strong
-                className={`status-side status-${cra.statut.toLowerCase()}`}
-              >
-                {getStatusLabel(cra.statut)}
-              </strong>
-
-              {(cra.motif_refus_client || cra.motifRefusClient) && (
-                <p className="refusal-message">
-                  Motif client : {cra.motif_refus_client || cra.motifRefusClient}
-                </p>
-              )}
-
-              {(cra.motif_refus_admin || cra.motifRefusAdmin) && (
-                <p className="refusal-message">
-                  Motif admin : {cra.motif_refus_admin || cra.motifRefusAdmin}
-                </p>
-              )}
-            </section>
-
-            <section className="side-card">
-              <h3>Résumé du mois</h3>
-
-              <div className="summary-line blue">
-                <span>Jours travaillés</span>
-                <strong>{totals.travail}</strong>
-              </div>
-
-              <div className="summary-line green">
-                <span>Congés</span>
-                <strong>{totals.conge}</strong>
-              </div>
-
-              <div className="summary-line red">
-                <span>Absences</span>
-                <strong>{totals.absence}</strong>
-              </div>
-
-              <div className="summary-line purple">
-                <span>RTT</span>
-                <strong>{totals.rtt}</strong>
-              </div>
-
-              <div className="summary-total">
-                Total saisi <strong>{totals.total} jour(s)</strong>
-              </div>
-            </section>
-
-            <section className="side-card">
-              <h3>Types d’activité</h3>
-
-              <div className="legend-line blue">Travail</div>
-              <div className="legend-line green">Congé</div>
-              <div className="legend-line red">Absence</div>
-              <div className="legend-line purple">RTT</div>
-            </section>
-          </aside>
         </div>
+
+        {toast && (
+          <div className={`cra-toast cra-toast-${toast.type}`}>
+            {toast.message}
+          </div>
+        )}
       </main>
     </div>
   );
 }
+
+export default CraDetailPage;

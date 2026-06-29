@@ -73,10 +73,11 @@ export class CraService {
     );
 
     await this.validateCraDaysDates(
-      createCraDto.mois,
-      createCraDto.annee,
-      createCraDto.days || [],
-    );
+  createCraDto.mois,
+  createCraDto.annee,
+  createCraDto.days || [],
+  false,
+);
 
     this.validateActivityEntriesRules(createCraDto.days || []);
 
@@ -343,7 +344,7 @@ export class CraService {
 
     this.validateCraDaysWithAssignment(days, activeAssignment);
 
-    await this.validateCraDaysDates(mois, annee, days);
+    await this.validateCraDaysDates(mois, annee, days, false);
 
     this.validateActivityEntriesRules(days);
 
@@ -417,6 +418,13 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
         'Seuls les CRA brouillons ou refusés peuvent être soumis',
       );
     }
+
+    await this.validateCraDaysDates(
+  cra.mois,
+  cra.annee,
+  cra.days || [],
+  true,
+);
 
     await this.validateCraCoherence(cra);
 
@@ -635,14 +643,11 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
   }
 
   private async validateCraDaysDates(
-    mois: number,
-    annee: number,
-    days: Array<{
-      date?: string;
-      type?: CraDayType;
-      duree?: number;
-    }>,
-  ): Promise<void> {
+  mois: number,
+  annee: number,
+  days: any[],
+  requireDuration = false,
+): Promise<void> {
     const dates = new Set<string>();
     const holidays = await this.getHolidayDatesByYear(annee);
 
@@ -679,11 +684,13 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
         );
       }
 
-      if (day.duree === undefined || Number(day.duree) <= 0) {
-        throw new BadRequestException(
-          `La durée de la date ${day.date} doit être supérieure à 0`,
-        );
-      }
+      const duree = Number(day.duree || 0);
+
+if (requireDuration && day.type === CraDayType.TRAVAIL && duree <= 0) {
+  throw new BadRequestException(
+    `La durée de la date ${day.date} doit être supérieure à 0`,
+  );
+}
 
       if (Number(day.duree) > 1) {
         throw new BadRequestException(
@@ -875,25 +882,29 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
   }
 
   private calculateDayDuree(day: {
-    type: CraDayType;
-    duree?: number;
-    activityEntries?: { duree: number }[];
-  }): number {
-    if (day.type === CraDayType.CONGE || day.type === CraDayType.ABSENCE) {
-      return 1;
-    }
-
-    const activityTotal = (day.activityEntries || []).reduce(
-      (total, entry) => total + Number(entry.duree || 0),
-      0,
-    );
-
-    if (activityTotal > 0) {
-      return Number(activityTotal.toFixed(1));
-    }
-
-    return Number(day.duree || 0);
+  type: CraDayType;
+  duree?: number;
+  activityEntries?: { duree: number }[];
+}): number {
+  if (
+    day.type === CraDayType.CONGE ||
+    day.type === CraDayType.ABSENCE ||
+    day.type === CraDayType.RTT
+  ) {
+    return 1;
   }
+
+  const activityTotal = (day.activityEntries || []).reduce(
+    (total, entry) => total + Number(entry.duree || 0),
+    0,
+  );
+
+  if (activityTotal > 0) {
+    return Number(activityTotal.toFixed(1));
+  }
+
+  return Number(day.duree || 0);
+}
 
   private validateActivityEntriesRules(days: CreateCraDayDto[]): void {
     for (const day of days) {
@@ -905,23 +916,19 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
       );
 
       if (
-        (day.type === CraDayType.CONGE || day.type === CraDayType.ABSENCE) &&
-        entries.length > 0
-      ) {
-        throw new BadRequestException(
-          `La date ${day.date} est en ${day.type}, les activités doivent être vides`,
-        );
-      }
+  (day.type === CraDayType.CONGE ||
+    day.type === CraDayType.ABSENCE ||
+    day.type === CraDayType.RTT) &&
+  entries.length > 0
+) {
+  throw new BadRequestException(
+    `La date ${day.date} est en ${day.type}, les activités doivent être vides`,
+  );
+}
 
       if (day.type === CraDayType.TRAVAIL && total > 1) {
         throw new BadRequestException(
           `Le total des activités du ${day.date} ne peut pas dépasser 1 jour`,
-        );
-      }
-
-      if (day.type === CraDayType.RTT && total !== 0 && total !== 0.5) {
-        throw new BadRequestException(
-          `La RTT du ${day.date} doit être vide ou égale à 0.5 jour`,
         );
       }
     }

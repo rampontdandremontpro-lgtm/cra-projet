@@ -117,7 +117,6 @@ export default function CraListPage() {
       <main className="dashboard-content">
         <div className="cra-list-header">
           <div>
-            <p className="breadcrumb">Tableau de bord / Mes CRA</p>
             <h1>Mes CRA</h1>
           </div>
 

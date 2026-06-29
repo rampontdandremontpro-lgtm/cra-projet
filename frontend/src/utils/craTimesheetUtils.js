@@ -71,7 +71,11 @@ export const isDateAfter = (dateString, limitString) => {
 export const getDayTotal = (row) => {
   if (!row || row.disabled) return 0;
 
-  if (row.type === CRA_DAY_TYPES.CONGE || row.type === CRA_DAY_TYPES.ABSENCE) {
+  if (
+    row.type === CRA_DAY_TYPES.CONGE ||
+    row.type === CRA_DAY_TYPES.ABSENCE ||
+    row.type === CRA_DAY_TYPES.RTT
+  ) {
     return 1;
   }
 
@@ -169,22 +173,29 @@ export const generateMonthRows = ({
 
     const activities = {};
 
-    for (const column of activityColumns) {
-      activities[column.id] = '';
-    }
+for (const column of activityColumns) {
+  activities[column.id] = existingDay?.activities?.[column.id] ?? '';
+}
 
-    if (existingDay?.activityEntries?.length > 0) {
-      for (const entry of existingDay.activityEntries) {
-        const columnId =
-          entry.activityColumn?.id ||
-          entry.activityColumnId ||
-          entry.columnId;
+    const existingEntries =
+  existingDay?.activityEntries ||
+  existingDay?.activity_entries ||
+  [];
 
-        if (columnId) {
-          activities[columnId] = Number(entry.duree);
-        }
-      }
+if (existingEntries.length > 0) {
+  for (const entry of existingEntries) {
+    const columnId =
+      entry.activityColumn?.id ||
+      entry.activity_column?.id ||
+      entry.activityColumnId ||
+      entry.activity_column_id ||
+      entry.columnId;
+
+    if (columnId) {
+      activities[columnId] = Number(entry.duree);
     }
+  }
+}
 
     rows.push({
       date: dateString,
@@ -223,10 +234,7 @@ export const buildCraPayloadFromTimesheet = ({
     days: enabledRows.map((row) => {
       const activityEntries = [];
 
-      if (
-        row.type === CRA_DAY_TYPES.TRAVAIL ||
-        row.type === CRA_DAY_TYPES.RTT
-      ) {
+      if (row.type === CRA_DAY_TYPES.TRAVAIL) {
         activityColumns.forEach((column, index) => {
           const value = Number(row.activities?.[column.id] || 0);
 
@@ -255,6 +263,49 @@ export const buildCraPayloadFromTimesheet = ({
 
 export const createDefaultActivityColumn = (index = 0) => ({
   id: `local-${Date.now()}-${index}`,
-  nom: `Activité ${index + 1}`,
+  nom: '',
   orderIndex: index,
 });
+
+export const normalizeCraActivityColumns = (cra) => {
+  const columns = cra?.activityColumns || cra?.activity_columns || [];
+
+  if (!columns.length) {
+    return [createDefaultActivityColumn(0)];
+  }
+
+  return [...columns]
+    .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
+    .map((column, index) => ({
+      id: column.id,
+      nom: column.nom || '',
+      orderIndex: column.orderIndex ?? index,
+    }));
+};
+
+export const normalizeCraDays = (cra) => {
+  return cra?.days || cra?.jours || [];
+};
+
+export const generateRowsFromExistingCra = ({
+  cra,
+  assignment,
+  holidayDates = [],
+}) => {
+  const activityColumns = normalizeCraActivityColumns(cra);
+  const existingDays = normalizeCraDays(cra);
+
+  const rows = generateMonthRows({
+    mois: Number(cra.mois),
+    annee: Number(cra.annee),
+    assignment,
+    holidayDates,
+    existingDays,
+    activityColumns,
+  });
+
+  return {
+    activityColumns,
+    rows,
+  };
+};

@@ -8,39 +8,21 @@ const normalizeCraDay = (day) => ({
 const normalizeCra = (cra) => {
   if (!cra) return cra;
 
-  const jours =
-    cra.jours?.length > 0
-      ? cra.jours
-      : cra.days?.length > 0
-        ? cra.days
-        : [];
-
-  const serviceLabel = cra.service
-    ? [cra.service.company?.nom, cra.service.nom].filter(Boolean).join(' - ')
-    : '-';
+  const normalizedDays = (cra.days || cra.jours || []).map((day) => ({
+    ...day,
+    date: String(day.date).split('T')[0],
+    type: day.type,
+    duree: Number(day.duree || 0),
+    commentaire: day.commentaire || '',
+    activityEntries: day.activityEntries || day.activity_entries || [],
+  }));
 
   return {
     ...cra,
-
-    jours: jours.map(normalizeCraDay),
-    days: jours.map(normalizeCraDay),
-
-    client: cra.client || {
-      id: cra.service?.id || null,
-      nom: serviceLabel,
-    },
-
-    date_soumission: cra.date_soumission || cra.dateSoumission,
-    date_validation_client:
-      cra.date_validation_client || cra.dateValidationClient,
-    date_validation_admin:
-      cra.date_validation_admin || cra.dateValidationAdmin,
-
-    motif_refus_client: cra.motif_refus_client || cra.motifRefusClient,
-    motif_refus_admin: cra.motif_refus_admin || cra.motifRefusAdmin,
-
-    created_at: cra.created_at || cra.createdAt,
-    updated_at: cra.updated_at || cra.updatedAt,
+    days: normalizedDays,
+    jours: normalizedDays,
+    activityColumns: cra.activityColumns || cra.activity_columns || [],
+    activityEntries: cra.activityEntries || cra.activity_entries || [],
   };
 };
 
@@ -104,12 +86,12 @@ export const getCraPdf = async (id) => {
 };
 
 export const createCra = async (craData) => {
-  const response = await api.post('/cra', buildCraPayload(craData));
+  const response = await api.post('/cra', craData);
   return normalizeCra(response.data);
 };
 
 export const updateCra = async (id, craData) => {
-  const response = await api.patch(`/cra/${id}`, buildCraPayload(craData));
+  const response = await api.patch(`/cra/${id}`, craData);
   return normalizeCra(response.data);
 };
 
