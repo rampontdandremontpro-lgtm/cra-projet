@@ -12,7 +12,10 @@ import { Holiday } from '../holidays/holiday.entity';
 import { User, UserRole } from '../users/user.entity';
 import { CraDay, CraDayType } from './cra-day.entity';
 import { Cra, CraStatus } from './cra.entity';
+import { CraActivityColumn } from './cra-activity-column.entity';
+import { CraActivityEntry } from './cra-activity-entry.entity';
 import { CreateCraDto } from './dto/create-cra.dto';
+import { CreateCraDayDto } from './dto/create-cra-day.dto';
 import { RefuseCraDto } from './dto/refuse-cra.dto';
 import { UpdateCraDto } from './dto/update-cra.dto';
 
@@ -25,6 +28,12 @@ export class CraService {
     @InjectRepository(CraDay)
     private readonly craDayRepository: Repository<CraDay>,
 
+    @InjectRepository(CraActivityColumn)
+    private readonly craActivityColumnRepository: Repository<CraActivityColumn>,
+
+    @InjectRepository(CraActivityEntry)
+    private readonly craActivityEntryRepository: Repository<CraActivityEntry>,
+
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
 
@@ -35,37 +44,47 @@ export class CraService {
     private readonly holidaysRepository: Repository<Holiday>,
   ) {}
 
-  async create(
+    async create(
     collaboratorId: number,
     createCraDto: CreateCraDto,
   ): Promise<Cra> {
     const collaborator = await this.usersRepository.findOne({
-      where: { id: collaboratorId },
+      where: {
+        id: collaboratorId,
+      },
     });
 
-    if (!collaborator) {
-      throw new NotFoundException('Collaborateur introuvable');
+    if (!collaborator || collaborator.role !== UserRole.COLLABORATEUR) {
+      throw new BadRequestException('Collaborateur invalide');
     }
 
-    if (collaborator.role !== UserRole.COLLABORATEUR) {
-      throw new BadRequestException(
-        'Seul un utilisateur COLLABORATEUR peut créer un CRA',
-      );
-    }
+    const activeAssignment =
+      await this.findActiveAssignmentOrFail(collaboratorId);
 
-    const activeAssignment = await this.findActiveAssignmentOrFail(collaboratorId);
+    this.validateCraPeriodWithAssignment(
+      createCraDto.mois,
+      createCraDto.annee,
+      activeAssignment,
+    );
 
-this.validateCraPeriodWithAssignment(
-  createCraDto.mois,
-  createCraDto.annee,
-  activeAssignment,
-);
+    this.validateCraDaysWithAssignment(
+      createCraDto.days || [],
+      activeAssignment,
+    );
 
-this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
+    await this.validateCraDaysDates(
+      createCraDto.mois,
+      createCraDto.annee,
+      createCraDto.days || [],
+    );
+
+    this.validateActivityEntriesRules(createCraDto.days || []);
 
     const existingCra = await this.craRepository.findOne({
       where: {
-        collaborateur: { id: collaboratorId },
+        collaborateur: {
+          id: collaboratorId,
+        },
         mois: createCraDto.mois,
         annee: createCraDto.annee,
       },
@@ -73,54 +92,44 @@ this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
 
     if (existingCra) {
       throw new BadRequestException(
-        'Un CRA existe déjà pour ce collaborateur sur ce mois et cette année',
+        'Un CRA existe déjà pour ce mois et cette année',
       );
     }
 
-    if (createCraDto.days && createCraDto.days.length > 0) {
-      await this.validateCraDaysDates(
-        createCraDto.mois,
-        createCraDto.annee,
-        createCraDto.days,
-      );
-    }
+    const cra = await this.craRepository.save(
+      this.craRepository.create({
+        collaborateur: collaborator,
+        service: activeAssignment.service,
+        mois: createCraDto.mois,
+        annee: createCraDto.annee,
+        statut: CraStatus.BROUILLON,
+        dateSoumission: null,
+      }),
+    );
 
-    const cra = this.craRepository.create({
-      collaborateur: collaborator,
-      service: activeAssignment.service,
-      mois: createCraDto.mois,
-      annee: createCraDto.annee,
-      statut: CraStatus.BROUILLON,
-      dateSoumission: null,
-      dateValidationClient: null,
-      clientValidator: null,
-      dateRefusClient: null,
-      clientRefuser: null,
-      motifRefusClient: null,
-      dateValidationAdmin: null,
-      adminValidator: null,
-      dateRefusAdmin: null,
-      adminRefuser: null,
-      motifRefusAdmin: null,
-    });
+    const daysToSave = (createCraDto.days || []).map((day) =>
+      this.craDayRepository.create({
+        cra: { id: cra.id } as Cra,
+        date: day.date,
+        type: day.type,
+        duree: this.calculateDayDuree(day),
+        commentaire: day.commentaire || null,
+      }),
+    );
 
-    const savedCra = await this.craRepository.save(cra);
+    const savedDays =
+      daysToSave.length > 0
+        ? await this.craDayRepository.save(daysToSave)
+        : [];
 
-    if (createCraDto.days && createCraDto.days.length > 0) {
-      const craDays = createCraDto.days.map((day) =>
-        this.craDayRepository.create({
-          cra: savedCra,
-          date: day.date,
-          type: day.type,
-          duree: day.duree,
-          commentaire: day.commentaire ?? null,
-        }),
-      );
+    await this.saveActivityColumnsAndEntries(
+      cra,
+      createCraDto.activityColumns || [],
+      createCraDto.days || [],
+      savedDays,
+    );
 
-      await this.craDayRepository.save(craDays);
-    }
-
-    return this.findOne(savedCra.id);
+    return this.findOne(cra.id);
   }
 
   async findAll(): Promise<Cra[]> {
@@ -143,18 +152,30 @@ this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
   async findOne(id: number): Promise<Cra> {
     const cra = await this.craRepository.findOne({
       where: { id },
-      relations: {
+            relations: {
         collaborateur: true,
         service: { company: true },
-        days: true,
+        days: {
+          activityEntries: {
+            activityColumn: true,
+          },
+        },
+        activityColumns: true,
+        activityEntries: {
+          activityColumn: true,
+          craDay: true,
+        },
         clientValidator: true,
         clientRefuser: true,
         adminValidator: true,
         adminRefuser: true,
       },
-      order: {
+        order: {
         days: {
           date: 'ASC',
+        },
+        activityColumns: {
+          orderIndex: 'ASC',
         },
       },
     });
@@ -286,7 +307,7 @@ this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
     });
   }
 
-    async update(
+      async update(
     id: number,
     collaboratorId: number,
     updateCraDto: UpdateCraDto,
@@ -294,9 +315,7 @@ this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
     const cra = await this.findOne(id);
 
     if (cra.collaborateur.id !== collaboratorId) {
-      throw new ForbiddenException(
-        'Vous ne pouvez modifier que vos propres CRA',
-      );
+      throw new ForbiddenException('Vous ne pouvez modifier que vos CRA');
     }
 
     if (
@@ -305,65 +324,74 @@ this.validateCraDaysWithAssignment(createCraDto.days || [], activeAssignment);
       cra.statut !== CraStatus.REFUSE_ADMIN
     ) {
       throw new BadRequestException(
-        'Ce CRA ne peut plus être modifié dans son statut actuel',
+        'Seuls les CRA en brouillon ou refusés peuvent être modifiés',
       );
     }
 
     const mois = updateCraDto.mois ?? cra.mois;
     const annee = updateCraDto.annee ?? cra.annee;
-    const days = updateCraDto.days ?? cra.days;
+    const days = updateCraDto.days || [];
 
-    if (!days || days.length === 0) {
-      throw new BadRequestException(
-        'Le CRA doit contenir au moins une journée',
-      );
+    if (days.length === 0) {
+      throw new BadRequestException('Le CRA doit contenir au moins un jour');
     }
 
-    const activeAssignment = await this.findActiveAssignmentOrFail(
-      cra.collaborateur.id,
-    );
+    const activeAssignment =
+      await this.findActiveAssignmentOrFail(collaboratorId);
 
     this.validateCraPeriodWithAssignment(mois, annee, activeAssignment);
+
     this.validateCraDaysWithAssignment(days, activeAssignment);
 
     await this.validateCraDaysDates(mois, annee, days);
 
+    this.validateActivityEntriesRules(days);
+
     cra.mois = mois;
     cra.annee = annee;
+    cra.service = activeAssignment.service;
     cra.statut = CraStatus.BROUILLON;
+
     cra.dateSoumission = null;
 
-    if (updateCraDto.days !== undefined) {
-      await this.craDayRepository
-        .createQueryBuilder()
-        .delete()
-        .from(CraDay)
-        .where('cra_id = :craId', { craId: cra.id })
-        .execute();
+    cra.clientValidator = null;
+    cra.dateValidationClient = null;
+    cra.clientRefuser = null;
+    cra.dateRefusClient = null;
+    cra.motifRefusClient = null;
 
-      const newDays = updateCraDto.days.map((day) =>
-        this.craDayRepository.create({
-          cra: { id: cra.id } as Cra,
-          date: day.date,
-          type: day.type,
-          duree: Number(day.duree ?? 1),
-          commentaire: day.commentaire ?? null,
-        }),
-      );
+    cra.adminValidator = null;
+    cra.dateValidationAdmin = null;
+    cra.adminRefuser = null;
+    cra.dateRefusAdmin = null;
+    cra.motifRefusAdmin = null;
 
-      await this.craDayRepository.save(newDays);
-    }
+    const savedCra = await this.craRepository.save(cra);
 
-    await this.craRepository.update(cra.id, {
-      mois: cra.mois,
-      annee: cra.annee,
-      statut: CraStatus.BROUILLON,
-      dateSoumission: null,
-    });
+    await this.clearCraDynamicData(savedCra.id);
 
-    return this.findOne(cra.id);
+    const daysToSave = days.map((day) =>
+      this.craDayRepository.create({
+        cra: { id: savedCra.id } as Cra,
+        date: day.date,
+        type: day.type,
+        duree: this.calculateDayDuree(day),
+        commentaire: day.commentaire || null,
+      }),
+    );
+
+    const savedDays = await this.craDayRepository.save(daysToSave);
+
+    await this.saveActivityColumnsAndEntries(
+      savedCra,
+      updateCraDto.activityColumns || [],
+      days,
+      savedDays,
+    );
+
+    return this.findOne(savedCra.id);
   }
-
+  
   async submit(id: number, collaboratorId: number): Promise<Cra> {
     const cra = await this.findOne(id);
 
@@ -815,6 +843,145 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
           `La date ${day.date} est après la fin de l’affectation`,
         );
       }
+    }
+  }
+
+      private normalizeDateString(date: string | Date): string {
+    if (date instanceof Date) {
+      return date.toISOString().split('T')[0];
+    }
+
+    return String(date).split('T')[0];
+  }
+
+    private async clearCraDynamicData(craId: number): Promise<void> {
+    await this.craActivityEntryRepository
+      .createQueryBuilder()
+      .delete()
+      .where('cra_id = :craId', { craId })
+      .execute();
+
+    await this.craActivityColumnRepository
+      .createQueryBuilder()
+      .delete()
+      .where('cra_id = :craId', { craId })
+      .execute();
+
+    await this.craDayRepository
+      .createQueryBuilder()
+      .delete()
+      .where('cra_id = :craId', { craId })
+      .execute();
+  }
+
+  private calculateDayDuree(day: {
+    type: CraDayType;
+    duree?: number;
+    activityEntries?: { duree: number }[];
+  }): number {
+    if (day.type === CraDayType.CONGE || day.type === CraDayType.ABSENCE) {
+      return 1;
+    }
+
+    const activityTotal = (day.activityEntries || []).reduce(
+      (total, entry) => total + Number(entry.duree || 0),
+      0,
+    );
+
+    if (activityTotal > 0) {
+      return Number(activityTotal.toFixed(1));
+    }
+
+    return Number(day.duree || 0);
+  }
+
+  private validateActivityEntriesRules(days: CreateCraDayDto[]): void {
+    for (const day of days) {
+      const entries = day.activityEntries || [];
+
+      const total = entries.reduce(
+        (sum, entry) => sum + Number(entry.duree || 0),
+        0,
+      );
+
+      if (
+        (day.type === CraDayType.CONGE || day.type === CraDayType.ABSENCE) &&
+        entries.length > 0
+      ) {
+        throw new BadRequestException(
+          `La date ${day.date} est en ${day.type}, les activités doivent être vides`,
+        );
+      }
+
+      if (day.type === CraDayType.TRAVAIL && total > 1) {
+        throw new BadRequestException(
+          `Le total des activités du ${day.date} ne peut pas dépasser 1 jour`,
+        );
+      }
+
+      if (day.type === CraDayType.RTT && total !== 0 && total !== 0.5) {
+        throw new BadRequestException(
+          `La RTT du ${day.date} doit être vide ou égale à 0.5 jour`,
+        );
+      }
+    }
+  }
+
+  private async saveActivityColumnsAndEntries(
+    cra: Cra,
+    activityColumnsDto: CreateCraDto['activityColumns'] = [],
+    daysDto: CreateCraDto['days'] = [],
+    savedDays: CraDay[] = [],
+  ): Promise<void> {
+    if (!activityColumnsDto || activityColumnsDto.length === 0) {
+      return;
+    }
+
+    const savedColumns = await this.craActivityColumnRepository.save(
+      activityColumnsDto.map((column, index) =>
+        this.craActivityColumnRepository.create({
+          cra: { id: cra.id } as Cra,
+          nom: column.nom,
+          orderIndex: column.orderIndex ?? index,
+        }),
+      ),
+    );
+
+    const savedDaysByDate = new Map(
+      savedDays.map((day) => [this.normalizeDateString(day.date), day]),
+    );
+
+    const entriesToSave: CraActivityEntry[] = [];
+
+    for (const dayDto of daysDto || []) {
+      const savedDay = savedDaysByDate.get(
+        this.normalizeDateString(dayDto.date),
+      );
+
+      if (!savedDay) continue;
+
+      for (const entryDto of dayDto.activityEntries || []) {
+        const column = savedColumns[entryDto.activityColumnIndex];
+
+        if (!column) {
+          throw new BadRequestException(
+            `Colonne d’activité introuvable pour la date ${dayDto.date}`,
+          );
+        }
+
+        entriesToSave.push(
+          this.craActivityEntryRepository.create({
+            cra: { id: cra.id } as Cra,
+            craDay: { id: savedDay.id } as CraDay,
+            activityColumn: { id: column.id } as CraActivityColumn,
+            duree: Number(entryDto.duree),
+          }),
+        );
+      }
+    }
+
+    if (entriesToSave.length > 0) {
+      await this.craActivityEntryRepository.save(entriesToSave);
     }
   }
 }

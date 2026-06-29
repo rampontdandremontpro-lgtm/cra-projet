@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -6,9 +7,12 @@ import {
   IsString,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import { CraDayType } from '../cra-day.entity';
+import { CreateCraActivityEntryDto } from './create-cra-activity-entry.dto';
 
 export class UpdateCraDayDto {
   @IsOptional()
@@ -28,4 +32,10 @@ export class UpdateCraDayDto {
   @IsOptional()
   @IsString()
   commentaire?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateCraActivityEntryDto)
+  activityEntries?: CreateCraActivityEntryDto[];
 }

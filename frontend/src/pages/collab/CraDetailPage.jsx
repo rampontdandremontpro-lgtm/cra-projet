@@ -2,19 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
+import { getMyActiveAssignment } from '../../services/collaboratorAssignmentApi';
 import {
   deleteCra,
+  downloadCraPdf,
   getCraById,
-  getCraPdf,
   submitCra,
   updateCra,
 } from '../../services/craApi';
+import { getHolidaysByYear } from '../../services/holidayApi';
 
 import {
-  buildDateFromDay,
   calculateCraTotals,
-  createEmptyCraDay,
-  getDayFromDate,
   getLastDayOfMonth,
   getMonthName,
   getStatusLabel,
@@ -23,12 +22,99 @@ import {
 import '../../styles/dashboard.css';
 import '../../styles/cra.css';
 
+const normalizeDate = (dateString) => {
+  return String(dateString).split('T')[0];
+};
+
+const buildDate = (year, month, day) => {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(
+    2,
+    '0',
+  )}`;
+};
+
+const formatDate = (dateString) => {
+  const [year, month, day] = normalizeDate(dateString).split('-');
+  return `${day}/${month}/${year}`;
+};
+
+const isWeekend = (year, month, day) => {
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+
+  return dayOfWeek === 0 || dayOfWeek === 6;
+};
+
+const isDateInsideAssignment = (dateString, assignment) => {
+  if (!assignment?.startDate) return true;
+
+  const date = normalizeDate(dateString);
+  const startDate = normalizeDate(assignment.startDate);
+  const endDate = assignment.endDate ? normalizeDate(assignment.endDate) : null;
+
+  if (date < startDate) return false;
+  if (endDate && date > endDate) return false;
+
+  return true;
+};
+
+const canEditCra = (statut) => {
+  return (
+    statut === 'BROUILLON' ||
+    statut === 'REFUSE_CLIENT' ||
+    statut === 'REFUSE_ADMIN'
+  );
+};
+
+const generateWorkingDays = (
+  mois,
+  annee,
+  assignment,
+  holidayDates,
+  existingDays = [],
+) => {
+  const holidaysSet = new Set(holidayDates.map(normalizeDate));
+  const existingDaysByDate = new Map();
+
+  existingDays.forEach((day) => {
+    if (day.date) {
+      existingDaysByDate.set(normalizeDate(day.date), day);
+    }
+  });
+
+  const lastDay = getLastDayOfMonth(annee, mois);
+  const days = [];
+
+  for (let day = 1; day <= lastDay; day += 1) {
+    const dateString = buildDate(annee, mois, day);
+
+    if (isWeekend(annee, mois, day)) continue;
+    if (holidaysSet.has(dateString)) continue;
+    if (!isDateInsideAssignment(dateString, assignment)) continue;
+
+    const existingDay = existingDaysByDate.get(dateString);
+
+    days.push({
+      id: existingDay?.id,
+      date: dateString,
+      type: existingDay?.type || 'TRAVAIL',
+      duree: Number(existingDay?.duree || 1),
+      commentaire: existingDay?.commentaire || '',
+    });
+  }
+
+  return days;
+};
+
 export default function CraDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [cra, setCra] = useState(null);
   const [jours, setJours] = useState([]);
+  const [assignment, setAssignment] = useState(null);
+  const [holidayDates, setHolidayDates] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -52,9 +138,30 @@ export default function CraDetailPage() {
   const loadCra = async () => {
     try {
       const data = await getCraById(id);
+      const currentDays = data.jours || data.days || [];
 
       setCra(data);
-      setJours(data.jours || data.days || []);
+
+      if (canEditCra(data.statut)) {
+        const activeAssignment = await getMyActiveAssignment();
+        const holidays = await getHolidaysByYear(data.annee);
+        const dates = holidays.map((holiday) => holiday.date);
+
+        setAssignment(activeAssignment);
+        setHolidayDates(dates);
+
+        const generatedDays = generateWorkingDays(
+          data.mois,
+          data.annee,
+          activeAssignment,
+          dates,
+          currentDays,
+        );
+
+        setJours(generatedDays);
+      } else {
+        setJours(currentDays);
+      }
     } catch (err) {
       console.error(err);
       setError('Impossible de charger le CRA.');
@@ -63,10 +170,7 @@ export default function CraDetailPage() {
     }
   };
 
-  const editable =
-    cra?.statut === 'BROUILLON' ||
-    cra?.statut === 'REFUSE_CLIENT' ||
-    cra?.statut === 'REFUSE_ADMIN';
+  const editable = canEditCra(cra?.statut);
 
   const totals = useMemo(() => calculateCraTotals(jours), [jours]);
 
@@ -95,31 +199,38 @@ export default function CraDetailPage() {
     setJours(updatedDays);
   };
 
-  const handleDayNumberChange = (index, value) => {
-    if (!value) {
-      handleDayChange(index, 'date', '');
-      return;
+  const reloadWorkingDays = async () => {
+    if (!cra) return;
+
+    try {
+      let currentAssignment = assignment;
+      let currentHolidayDates = holidayDates;
+
+      if (!currentAssignment) {
+        currentAssignment = await getMyActiveAssignment();
+        setAssignment(currentAssignment);
+      }
+
+      if (currentHolidayDates.length === 0) {
+        const holidays = await getHolidaysByYear(cra.annee);
+        currentHolidayDates = holidays.map((holiday) => holiday.date);
+        setHolidayDates(currentHolidayDates);
+      }
+
+      const generatedDays = generateWorkingDays(
+        cra.mois,
+        cra.annee,
+        currentAssignment,
+        currentHolidayDates,
+        jours,
+      );
+
+      setJours(generatedDays);
+      setSuccess('Jours ouvrés rechargés avec succès.');
+    } catch (err) {
+      console.error(err);
+      setError('Impossible de recharger les jours ouvrés.');
     }
-
-    const day = Number(value);
-    const lastDay = getLastDayOfMonth(cra.annee, cra.mois);
-
-    if (day < 1 || day > lastDay) return;
-
-    handleDayChange(index, 'date', buildDateFromDay(day, cra.mois, cra.annee));
-  };
-
-  const addDay = () => {
-    setJours([...jours, createEmptyCraDay()]);
-  };
-
-  const removeDay = (index) => {
-    if (jours.length === 1) {
-      setError('Le CRA doit contenir au moins une ligne.');
-      return;
-    }
-
-    setJours(jours.filter((_, i) => i !== index));
   };
 
   const buildPayload = () => ({
@@ -133,27 +244,38 @@ export default function CraDetailPage() {
     })),
   });
 
-    const handleSave = async () => {
+  const validateBeforeSave = () => {
+    if (jours.length === 0) {
+      setError('Le CRA doit contenir au moins une journée.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSave = async () => {
+    if (!validateBeforeSave()) return;
+
     setSaving(true);
     setError('');
     setSuccess('');
-
-    const currentDays = [...jours];
 
     try {
       await updateCra(id, buildPayload());
 
       const refreshedCra = await getCraById(id);
+      const refreshedDays = refreshedCra.jours || refreshedCra.days || jours;
 
-      const refreshedDays =
-        refreshedCra.jours?.length > 0
-          ? refreshedCra.jours
-          : refreshedCra.days?.length > 0
-            ? refreshedCra.days
-            : currentDays;
+      const generatedDays = generateWorkingDays(
+        refreshedCra.mois,
+        refreshedCra.annee,
+        assignment,
+        holidayDates,
+        refreshedDays,
+      );
 
       setCra(refreshedCra);
-      setJours(refreshedDays);
+      setJours(generatedDays);
 
       setSuccess('CRA enregistré avec succès.');
     } catch (err) {
@@ -167,28 +289,15 @@ export default function CraDetailPage() {
     }
   };
 
-      const handleSubmit = async () => {
+  const handleSubmit = async () => {
+    if (!validateBeforeSave()) return;
+
     setSaving(true);
     setError('');
     setSuccess('');
 
-    const currentDays = [...jours];
-
     try {
       await updateCra(id, buildPayload());
-
-      const refreshedCra = await getCraById(id);
-
-      const refreshedDays =
-        refreshedCra.jours?.length > 0
-          ? refreshedCra.jours
-          : refreshedCra.days?.length > 0
-            ? refreshedCra.days
-            : currentDays;
-
-      setCra(refreshedCra);
-      setJours(refreshedDays);
-
       await submitCra(id);
 
       navigate('/mes-cra');
@@ -224,7 +333,7 @@ export default function CraDetailPage() {
       await downloadCraPdf(cra);
     } catch (err) {
       console.error(err);
-      setError("Impossible d'ouvrir le PDF.");
+      setError("Impossible de télécharger le PDF.");
     }
   };
 
@@ -314,15 +423,23 @@ export default function CraDetailPage() {
 
             <section className="cra-main-card">
               <div className="cra-section-header">
-                <h2>Saisie des activités</h2>
+                <div>
+                  <h2>Saisie des activités</h2>
+
+                  {editable && (
+                    <p className="cra-helper-text">
+                      Les jours ouvrés du mois sont générés automatiquement.
+                    </p>
+                  )}
+                </div>
 
                 {editable && (
                   <button
                     type="button"
                     className="add-line-btn"
-                    onClick={addDay}
+                    onClick={reloadWorkingDays}
                   >
-                    + Ajouter une ligne
+                    Recharger les jours ouvrés
                   </button>
                 )}
               </div>
@@ -337,32 +454,8 @@ export default function CraDetailPage() {
                 </div>
 
                 {jours.map((jour, index) => (
-                  <div className="cra-form-row" key={jour.id || index}>
-                    <div className="date-composer">
-                      <select
-                        value={getDayFromDate(jour.date)}
-                        disabled={!editable}
-                        onChange={(e) =>
-                          handleDayNumberChange(index, e.target.value)
-                        }
-                        required
-                      >
-                        <option value="">jj</option>
-
-                        {Array.from(
-                          { length: getLastDayOfMonth(cra.annee, cra.mois) },
-                          (_, i) => i + 1,
-                        ).map((day) => (
-                          <option key={day} value={day}>
-                            {String(day).padStart(2, '0')}
-                          </option>
-                        ))}
-                      </select>
-
-                      <span>
-                        / {String(cra.mois).padStart(2, '0')} / {cra.annee}
-                      </span>
-                    </div>
+                  <div className="cra-form-row" key={jour.date}>
+                    <strong>{formatDate(jour.date)}</strong>
 
                     <select
                       className={`type-select type-${jour.type.toLowerCase()}`}
@@ -399,17 +492,7 @@ export default function CraDetailPage() {
                       }
                     />
 
-                    {editable ? (
-                      <button
-                        type="button"
-                        className="delete-line-btn"
-                        onClick={() => removeDay(index)}
-                      >
-                        🗑
-                      </button>
-                    ) : (
-                      <span></span>
-                    )}
+                    <span></span>
                   </div>
                 ))}
               </div>
@@ -432,7 +515,7 @@ export default function CraDetailPage() {
                     className="primary-btn"
                     onClick={handlePdf}
                   >
-                    Voir le PDF
+                    Télécharger le PDF
                   </button>
                 )}
 
@@ -481,15 +564,15 @@ export default function CraDetailPage() {
                 {getStatusLabel(cra.statut)}
               </strong>
 
-              {cra.motif_refus_client && (
+              {(cra.motif_refus_client || cra.motifRefusClient) && (
                 <p className="refusal-message">
-                  Motif client : {cra.motif_refus_client}
+                  Motif client : {cra.motif_refus_client || cra.motifRefusClient}
                 </p>
               )}
 
-              {cra.motif_refus_admin && (
+              {(cra.motif_refus_admin || cra.motifRefusAdmin) && (
                 <p className="refusal-message">
-                  Motif admin : {cra.motif_refus_admin}
+                  Motif admin : {cra.motif_refus_admin || cra.motifRefusAdmin}
                 </p>
               )}
             </section>

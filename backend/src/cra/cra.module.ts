@@ -8,6 +8,8 @@ import { Service } from '../services/service.entity';
 import { User } from '../users/user.entity';
 import { CraDay } from './cra-day.entity';
 import { Cra } from './cra.entity';
+import { CraActivityColumn } from './cra-activity-column.entity';
+import { CraActivityEntry } from './cra-activity-entry.entity';
 import { CraController } from './cra.controller';
 import { CraService } from './cra.service';
 
@@ -16,6 +18,8 @@ import { CraService } from './cra.service';
     TypeOrmModule.forFeature([
       Cra,
       CraDay,
+      CraActivityColumn,
+      CraActivityEntry,
       User,
       Service,
       CollaboratorAssignment,

@@ -1,530 +1,366 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import Sidebar from '../../components/layout/Sidebar';
-import { useAuth } from '../../context/AuthContext';
+import CraTimesheetTable from '../../components/cra/CraTimesheetTable';
 import { getMyActiveAssignment } from '../../services/collaboratorAssignmentApi';
 import { createCra, submitCra } from '../../services/craApi';
-
+import { getHolidaysByYear } from '../../services/holidayApi';
 import {
-  buildDateFromDay,
-  calculateCraTotals,
-  createEmptyCraDay,
-  getDayFromDate,
-  getLastDayOfMonth,
-} from '../../utils/craUtils';
+  CRA_DAY_TYPES,
+  MONTH_NAMES,
+  buildCraPayloadFromTimesheet,
+  createDefaultActivityColumn,
+  generateMonthRows,
+  getDayTotal,
+} from '../../utils/craTimesheetUtils';
 
-import '../../styles/cra.css';
-import '../../styles/dashboard.css';
-
-const months = [
-  { value: 1, label: 'Janvier' },
-  { value: 2, label: 'Février' },
-  { value: 3, label: 'Mars' },
-  { value: 4, label: 'Avril' },
-  { value: 5, label: 'Mai' },
-  { value: 6, label: 'Juin' },
-  { value: 7, label: 'Juillet' },
-  { value: 8, label: 'Août' },
-  { value: 9, label: 'Septembre' },
-  { value: 10, label: 'Octobre' },
-  { value: 11, label: 'Novembre' },
-  { value: 12, label: 'Décembre' },
-];
-
-const getDateParts = (dateString) => {
-  const datePart = dateString.split('T')[0];
-  const [year, month, day] = datePart.split('-').map(Number);
-
-  return {
-    year,
-    month,
-    day,
-  };
-};
-
-const getAssignmentLabel = (assignment) => {
-  if (!assignment?.service) {
-    return 'Aucune affectation active';
-  }
-
-  return [assignment.service.company?.nom, assignment.service.nom]
-    .filter(Boolean)
-    .join(' - ');
-};
-
-const getDefaultPeriodFromAssignment = (startDate) => {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
-
-  const start = getDateParts(startDate);
-
-  const assignmentIsInFuture =
-    start.year > currentYear ||
-    (start.year === currentYear && start.month > currentMonth);
-
-  if (assignmentIsInFuture) {
-    return {
-      mois: start.month,
-      annee: start.year,
-    };
-  }
-
-  return {
-    mois: currentMonth,
-    annee: currentYear,
-  };
-};
-
-const isPeriodBeforeAssignment = (mois, annee, assignment) => {
-  if (!assignment?.startDate) return false;
-
-  const start = getDateParts(assignment.startDate);
-
-  if (annee < start.year) return true;
-  if (annee === start.year && mois < start.month) return true;
-
-  return false;
-};
-
-export default function CraCreatePage() {
+function CraCreatePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
-  const now = new Date();
+  const today = new Date();
+
+  const [mois, setMois] = useState(today.getMonth() + 1);
+  const [annee, setAnnee] = useState(today.getFullYear());
 
   const [assignment, setAssignment] = useState(null);
-  const [assignmentLoading, setAssignmentLoading] = useState(true);
+  const [holidayDates, setHolidayDates] = useState([]);
 
-  const [form, setForm] = useState({
-    mois: now.getMonth() + 1,
-    annee: now.getFullYear(),
-    jours: [createEmptyCraDay()],
-  });
+  const [activityColumns, setActivityColumns] = useState([
+    createDefaultActivityColumn(0),
+  ]);
 
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    loadAssignment();
+    loadInitialData();
   }, []);
 
   useEffect(() => {
-    if (!error) return;
+    loadHolidays();
+  }, [annee]);
 
-    const timer = setTimeout(() => setError(''), 5000);
-    return () => clearTimeout(timer);
-  }, [error]);
+  useEffect(() => {
+    if (assignment) {
+      regenerateRows();
+    }
+  }, [mois, annee, assignment, holidayDates]);
 
-  const loadAssignment = async () => {
+  const loadInitialData = async () => {
     try {
-      const data = await getMyActiveAssignment();
+      setLoading(true);
+      setError('');
 
-      setAssignment(data);
+      const activeAssignment = await getMyActiveAssignment();
 
-      const defaultPeriod = getDefaultPeriodFromAssignment(data.startDate);
+      setAssignment(activeAssignment);
 
-      setForm({
-        mois: defaultPeriod.mois,
-        annee: defaultPeriod.annee,
-        jours: [createEmptyCraDay()],
-      });
+      const assignmentStartDate = activeAssignment?.startDate
+        ? new Date(activeAssignment.startDate)
+        : null;
+
+      if (assignmentStartDate && assignmentStartDate > today) {
+        setMois(assignmentStartDate.getMonth() + 1);
+        setAnnee(assignmentStartDate.getFullYear());
+      }
     } catch (err) {
-      console.error(err);
-
       setError(
         err.response?.data?.message ||
-          "Impossible de récupérer l'affectation active.",
-      );
-    } finally {
-      setAssignmentLoading(false);
-    }
-  };
-
-  const totals = useMemo(() => calculateCraTotals(form.jours), [form.jours]);
-
-  const handleMonthChange = (e) => {
-    const mois = Number(e.target.value);
-
-    if (isPeriodBeforeAssignment(mois, form.annee, assignment)) {
-      setError(
-        'Tu ne peux pas créer un CRA avant la date de début de ton affectation.',
-      );
-      return;
-    }
-
-    setForm({
-      ...form,
-      mois,
-      jours: [createEmptyCraDay()],
-    });
-  };
-
-  const handleDayChange = (index, field, value) => {
-    const updatedDays = [...form.jours];
-
-    updatedDays[index] = {
-      ...updatedDays[index],
-      [field]: field === 'duree' ? Number(value) : value,
-    };
-
-    setForm({ ...form, jours: updatedDays });
-  };
-
-  const handleDayNumberChange = (index, value) => {
-    if (!value) {
-      handleDayChange(index, 'date', '');
-      return;
-    }
-
-    const day = Number(value);
-    const lastDay = getLastDayOfMonth(form.annee, form.mois);
-
-    if (day < 1 || day > lastDay) return;
-
-    handleDayChange(
-      index,
-      'date',
-      buildDateFromDay(day, form.mois, form.annee),
-    );
-  };
-
-  const addDay = () => {
-    setForm({
-      ...form,
-      jours: [...form.jours, createEmptyCraDay()],
-    });
-  };
-
-  const removeDay = (index) => {
-    if (form.jours.length === 1) {
-      setError('Le CRA doit contenir au moins une ligne.');
-      return;
-    }
-
-    setForm({
-      ...form,
-      jours: form.jours.filter((_, i) => i !== index),
-    });
-  };
-
-  const validateBeforeSave = () => {
-    if (!assignment) {
-      setError(
-        "Impossible de créer un CRA : aucune affectation active n'a été trouvée.",
-      );
-      return false;
-    }
-
-    if (isPeriodBeforeAssignment(form.mois, form.annee, assignment)) {
-      setError(
-        'Tu ne peux pas créer un CRA avant la date de début de ton affectation.',
-      );
-      return false;
-    }
-
-    const hasAtLeastOneDate = form.jours.some((jour) => jour.date);
-
-    if (!hasAtLeastOneDate) {
-      setError('Ajoute au moins une journée dans le CRA.');
-      return false;
-    }
-
-    return true;
-  };
-
-  const saveDraft = async () => {
-    setError('');
-
-    if (!validateBeforeSave()) return;
-
-    setLoading(true);
-
-    try {
-      await createCra(form);
-      navigate('/mes-cra');
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err.response?.data?.message ||
-          "Impossible d'enregistrer le brouillon.",
+          "Impossible de récupérer ton affectation active.",
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmitCra = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (!validateBeforeSave()) return;
-
-    setLoading(true);
-
+  const loadHolidays = async () => {
     try {
-      const createdCra = await createCra(form);
+      const holidays = await getHolidaysByYear(annee);
+
+      const dates = holidays.map((holiday) =>
+        String(holiday.date).split('T')[0],
+      );
+
+      setHolidayDates(dates);
+    } catch {
+      setHolidayDates([]);
+    }
+  };
+
+  const regenerateRows = () => {
+    const generatedRows = generateMonthRows({
+      mois: Number(mois),
+      annee: Number(annee),
+      assignment,
+      holidayDates,
+      activityColumns,
+    });
+
+    setRows(generatedRows);
+  };
+
+  const validateTimesheet = () => {
+    const cleanColumns = activityColumns.map((column) => ({
+      ...column,
+      nom: column.nom.trim(),
+    }));
+
+    if (cleanColumns.some((column) => !column.nom)) {
+      return 'Chaque colonne d’activité doit avoir un nom.';
+    }
+
+    for (const row of rows) {
+      if (row.disabled) {
+        continue;
+      }
+
+      const total = getDayTotal(row);
+
+      if (row.type === CRA_DAY_TYPES.TRAVAIL && total > 1) {
+        return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
+      }
+
+      if (row.type === CRA_DAY_TYPES.RTT && total !== 0 && total !== 0.5) {
+        return `La RTT du ${row.date} doit être vide ou égale à 0.5 jour.`;
+      }
+
+      if (
+        row.type === CRA_DAY_TYPES.ABSENCE &&
+        !String(row.commentaire || '').trim()
+      ) {
+        return `Le motif d’absence est obligatoire pour le ${row.date}.`;
+      }
+
+      for (const value of Object.values(row.activities || {})) {
+        if (value === '' || value === null || value === undefined) {
+          continue;
+        }
+
+        const numberValue = Number(value);
+
+        if (Number.isNaN(numberValue)) {
+          return `Une durée saisie le ${row.date} est invalide.`;
+        }
+
+        if (row.type === CRA_DAY_TYPES.TRAVAIL) {
+          if (numberValue < 0.1 || numberValue > 1) {
+            return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
+          }
+        }
+
+        if (row.type === CRA_DAY_TYPES.RTT && numberValue !== 0.5) {
+          return `Pour le ${row.date}, une RTT doit être égale à 0.5 jour.`;
+        }
+      }
+    }
+
+    return '';
+  };
+
+  const buildPayload = () => {
+    return buildCraPayloadFromTimesheet({
+      mois,
+      annee,
+      activityColumns: activityColumns.map((column, index) => ({
+        ...column,
+        nom: column.nom.trim(),
+        orderIndex: index,
+      })),
+      rows,
+    });
+  };
+
+  const handleSaveDraft = async () => {
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+
+      const validationError = validateTimesheet();
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      await createCra(buildPayload());
+
+      setSuccess('CRA enregistré en brouillon.');
+      navigate('/collaborateur/cra');
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Impossible d'enregistrer le CRA.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveAndSubmit = async () => {
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+
+      const validationError = validateTimesheet();
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      const createdCra = await createCra(buildPayload());
+
       await submitCra(createdCra.id);
 
-      navigate('/mes-cra');
+      setSuccess('CRA soumis au client.');
+      navigate('/collaborateur/cra');
     } catch (err) {
-      console.error(err);
-
       setError(
         err.response?.data?.message ||
-          'Impossible de soumettre le CRA. Vérifie les jours déclarés.',
+          "Impossible de soumettre le CRA.",
       );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const isMonthDisabled = (month) => {
-    return isPeriodBeforeAssignment(month, form.annee, assignment);
-  };
+  if (loading) {
+    return (
+      <div className="cra-page">
+        <p>Chargement du CRA...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="dashboard-page">
-      <Sidebar />
+    <div className="cra-page">
+      <div className="cra-page-title">
+        <div>
+          <h1>Nouveau CRA</h1>
+          <p>
+            Crée ton compte-rendu d’activité mensuel avec les activités du mois.
+          </p>
+        </div>
+      </div>
 
-      <main className="dashboard-content">
-        <div className="cra-page-title">
-          <p className="breadcrumb">Mes CRA / Nouveau CRA</p>
-          <h1>CRA — Nouveau</h1>
+      {error && <div className="cra-error">{error}</div>}
+      {success && <div className="cra-success">{success}</div>}
+
+      <div className="cra-main-card">
+        <div className="section-header">
+          <div>
+            <h2>Période du CRA</h2>
+            <p>
+              Les week-ends, jours fériés et jours hors affectation sont grisés
+              automatiquement.
+            </p>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmitCra} className="cra-create-layout">
-          <div>
-            <section className="cra-main-card">
-              <div className="cra-section-header">
-                <h2>Informations générales</h2>
-              </div>
-
-              <div className="cra-info-grid">
-                <label>
-                  Collaborateur
-                  <input
-                    type="text"
-                    value={`${user?.prenom || ''} ${user?.nom || ''}`}
-                    disabled
-                    readOnly
-                  />
-                </label>
-
-                <label>
-                  Affectation
-                  <input
-                    type="text"
-                    value={
-                      assignmentLoading
-                        ? 'Chargement...'
-                        : getAssignmentLabel(assignment)
-                    }
-                    disabled
-                    readOnly
-                  />
-                </label>
-
-                <label>
-                  Mois
-                  <select
-                    name="mois"
-                    value={form.mois}
-                    onChange={handleMonthChange}
-                    disabled={assignmentLoading || !assignment}
-                  >
-                    {months.map((month) => (
-                      <option
-                        key={month.value}
-                        value={month.value}
-                        disabled={isMonthDisabled(month.value)}
-                      >
-                        {month.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Année
-                  <input
-                    type="text"
-                    value={form.annee}
-                    disabled
-                    readOnly
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className="cra-main-card">
-              <div className="cra-section-header">
-                <h2>Saisie des activités</h2>
-
-                <button
-                  type="button"
-                  className="add-line-btn"
-                  onClick={addDay}
-                  disabled={assignmentLoading || !assignment}
-                >
-                  + Ajouter une ligne
-                </button>
-              </div>
-
-              <div className="cra-form-table">
-                <div className="cra-form-head">
-                  <span>Date</span>
-                  <span>Type</span>
-                  <span>Durée</span>
-                  <span>Commentaire</span>
-                  <span></span>
-                </div>
-
-                {form.jours.map((jour, index) => (
-                  <div className="cra-form-row" key={index}>
-                    <div className="date-composer">
-                      <select
-                        value={getDayFromDate(jour.date)}
-                        onChange={(e) =>
-                          handleDayNumberChange(index, e.target.value)
-                        }
-                        disabled={assignmentLoading || !assignment}
-                        required
-                      >
-                        <option value="">jj</option>
-
-                        {Array.from(
-                          { length: getLastDayOfMonth(form.annee, form.mois) },
-                          (_, i) => i + 1,
-                        ).map((day) => (
-                          <option key={day} value={day}>
-                            {String(day).padStart(2, '0')}
-                          </option>
-                        ))}
-                      </select>
-
-                      <span>
-                        / {String(form.mois).padStart(2, '0')} / {form.annee}
-                      </span>
-                    </div>
-
-                    <select
-                      className={`type-select type-${jour.type.toLowerCase()}`}
-                      value={jour.type}
-                      onChange={(e) =>
-                        handleDayChange(index, 'type', e.target.value)
-                      }
-                      disabled={assignmentLoading || !assignment}
-                    >
-                      <option value="TRAVAIL">Travail</option>
-                      <option value="CONGE">Congé</option>
-                      <option value="ABSENCE">Absence</option>
-                      <option value="RTT">RTT</option>
-                    </select>
-
-                    <select
-                      value={jour.duree}
-                      onChange={(e) =>
-                        handleDayChange(index, 'duree', e.target.value)
-                      }
-                      disabled={assignmentLoading || !assignment}
-                    >
-                      <option value={1}>1 jour</option>
-                      <option value={0.5}>0.5 jour</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      placeholder="Ajouter un commentaire..."
-                      value={jour.commentaire}
-                      onChange={(e) =>
-                        handleDayChange(index, 'commentaire', e.target.value)
-                      }
-                      disabled={assignmentLoading || !assignment}
-                    />
-
-                    <button
-                      type="button"
-                      className="delete-line-btn"
-                      onClick={() => removeDay(index)}
-                      disabled={assignmentLoading || !assignment}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {error && <div className="cra-error">{error}</div>}
-
-              <div className="cra-form-actions">
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={saveDraft}
-                  disabled={loading || assignmentLoading || !assignment}
-                >
-                  Enregistrer brouillon
-                </button>
-
-                <button
-                  type="submit"
-                  className="primary-btn"
-                  disabled={loading || assignmentLoading || !assignment}
-                >
-                  {loading ? 'Envoi...' : 'Soumettre le CRA'}
-                </button>
-              </div>
-            </section>
+        <div className="cra-form-grid">
+          <div className="form-group">
+            <label>Mois</label>
+            <select
+              value={mois}
+              onChange={(event) => setMois(Number(event.target.value))}
+            >
+              {MONTH_NAMES.map((monthName, index) =>
+                index === 0 ? null : (
+                  <option key={monthName} value={index}>
+                    {monthName}
+                  </option>
+                ),
+              )}
+            </select>
           </div>
 
-          <aside className="cra-side-panel">
-            <section className="side-card">
-              <h3>Statut</h3>
-              <strong className="status-draft">Brouillon</strong>
-            </section>
+          <div className="form-group">
+            <label>Année</label>
+            <input
+              type="number"
+              value={annee}
+              min="2025"
+              onChange={(event) => setAnnee(Number(event.target.value))}
+            />
+          </div>
 
-            <section className="side-card">
-              <h3>Résumé du mois</h3>
+          <div className="form-group">
+            <label>Service</label>
+            <input
+              type="text"
+              value={
+                assignment?.service?.nom
+                  ? `${assignment.service.nom}${
+                      assignment.service.company?.nom
+                        ? ` - ${assignment.service.company.nom}`
+                        : ''
+                    }`
+                  : 'Affectation active'
+              }
+              disabled
+            />
+          </div>
+        </div>
 
-              <div className="summary-line blue">
-                <span>Jours travaillés</span>
-                <strong>{totals.travail}</strong>
-              </div>
+        <div className="cra-form-actions">
+          <button
+            type="button"
+            className="secondary-action-btn"
+            onClick={regenerateRows}
+            disabled={saving}
+          >
+            Recharger les jours du mois
+          </button>
+        </div>
+      </div>
 
-              <div className="summary-line green">
-                <span>Congés</span>
-                <strong>{totals.conge}</strong>
-              </div>
+      <div className="cra-main-card">
+        <CraTimesheetTable
+          rows={rows}
+          setRows={setRows}
+          activityColumns={activityColumns}
+          setActivityColumns={setActivityColumns}
+        />
+      </div>
 
-              <div className="summary-line red">
-                <span>Absences</span>
-                <strong>{totals.absence}</strong>
-              </div>
+      <div className="cra-main-card">
+        <div className="cra-form-actions">
+          <button
+            type="button"
+            className="secondary-action-btn"
+            onClick={() => navigate('/collaborateur/cra')}
+            disabled={saving}
+          >
+            Annuler
+          </button>
 
-              <div className="summary-line purple">
-                <span>RTT</span>
-                <strong>{totals.rtt}</strong>
-              </div>
+          <button
+            type="button"
+            className="secondary-action-btn"
+            onClick={handleSaveDraft}
+            disabled={saving}
+          >
+            {saving ? 'Enregistrement...' : 'Enregistrer en brouillon'}
+          </button>
 
-              <div className="summary-total">
-                Total saisi <strong>{totals.total} jour(s)</strong>
-              </div>
-            </section>
-
-            <section className="side-card">
-              <h3>Types d’activité</h3>
-
-              <div className="legend-line blue">Travail</div>
-              <div className="legend-line green">Congé</div>
-              <div className="legend-line red">Absence</div>
-              <div className="legend-line purple">RTT</div>
-            </section>
-          </aside>
-        </form>
-      </main>
+          <button
+            type="button"
+            className="primary-action-btn"
+            onClick={handleSaveAndSubmit}
+            disabled={saving}
+          >
+            {saving ? 'Soumission...' : 'Enregistrer et soumettre'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
+
+export default CraCreatePage;

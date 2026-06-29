@@ -3,10 +3,12 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
 import { Cra } from './cra.entity';
+import { CraActivityEntry } from './cra-activity-entry.entity';
 
 export enum CraDayType {
   TRAVAIL = 'TRAVAIL',
@@ -47,4 +49,9 @@ export class CraDay {
 
   @Column({ type: 'text', nullable: true })
   commentaire: string | null;
+
+    @OneToMany(() => CraActivityEntry, (entry) => entry.craDay, {
+    cascade: true,
+  })
+  activityEntries: CraActivityEntry[];
 }

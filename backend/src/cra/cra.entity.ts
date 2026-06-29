@@ -12,6 +12,8 @@ import {
 import { Service } from '../services/service.entity';
 import { User } from '../users/user.entity';
 import { CraDay } from './cra-day.entity';
+import { CraActivityColumn } from './cra-activity-column.entity';
+import { CraActivityEntry } from './cra-activity-entry.entity';
 
 export enum CraStatus {
   BROUILLON = 'BROUILLON',
@@ -113,4 +115,14 @@ export class Cra {
 
   @OneToMany(() => CraDay, (day) => day.cra)
   days: CraDay[];
+
+    @OneToMany(() => CraActivityColumn, (column) => column.cra, {
+    cascade: true,
+  })
+  activityColumns: CraActivityColumn[];
+
+  @OneToMany(() => CraActivityEntry, (entry) => entry.cra, {
+    cascade: true,
+  })
+  activityEntries: CraActivityEntry[];
 }

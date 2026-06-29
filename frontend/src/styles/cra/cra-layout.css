@@ -74,3 +74,12 @@
   opacity: 1;
   cursor: not-allowed;
 }
+
+.cra-helper-text {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #64748b;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+}

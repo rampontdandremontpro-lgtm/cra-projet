@@ -41,11 +41,11 @@ export class HolidaysController {
     return this.holidaysService.findAll();
   }
 
-  @Roles(UserRole.ADMIN, UserRole.RH)
-  @Get('year/:year')
-  findByYear(@Param('year', ParseIntPipe) year: number) {
-    return this.holidaysService.findByYear(year);
-  }
+  @Roles(UserRole.ADMIN, UserRole.RH, UserRole.COLLABORATEUR, UserRole.CLIENT)
+@Get('year/:year')
+findByYear(@Param('year', ParseIntPipe) year: number) {
+  return this.holidaysService.findByYear(year);
+}
 
   @Roles(UserRole.ADMIN, UserRole.RH)
   @Get(':id')

@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+import { CreateCraActivityColumnDto } from './create-cra-activity-column.dto';
 import { CreateCraDayDto } from './create-cra-day.dto';
 
 export class CreateCraDto {
@@ -19,6 +20,12 @@ export class CreateCraDto {
   @IsInt()
   @Min(2025)
   annee: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateCraActivityColumnDto)
+  activityColumns?: CreateCraActivityColumnDto[];
 
   @IsOptional()
   @IsArray()

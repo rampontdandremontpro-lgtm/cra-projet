@@ -8,7 +8,8 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-import { UpdateCraDayDto } from './update-cra-day.dto';
+import { CreateCraActivityColumnDto } from './create-cra-activity-column.dto';
+import { CreateCraDayDto } from './create-cra-day.dto';
 
 export class UpdateCraDto {
   @IsOptional()
@@ -25,6 +26,12 @@ export class UpdateCraDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => UpdateCraDayDto)
-  days?: UpdateCraDayDto[];
+  @Type(() => CreateCraActivityColumnDto)
+  activityColumns?: CreateCraActivityColumnDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateCraDayDto)
+  days?: CreateCraDayDto[];
 }
