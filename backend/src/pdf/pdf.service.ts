@@ -871,15 +871,16 @@ export class PdfService {
       );
 
       y += 70;
-      y = ensureSpace(y, 105);
+y = ensureSpace(y, 155);
 
-      drawSectionTitle('SIGNATURES', y);
-      y += 25;
+drawSectionTitle('SIGNATURES', y);
+y += 25;
 
-      const sigWidth = (contentWidth - 20) / 3;
+const sigWidth = (contentWidth - 20) / 3;
+const sigHeight = 105;
 
-      const drawSignature = (x: number, title: string, name: string) => {
-        doc.roundedRect(x, y, sigWidth, 65, 4).strokeColor(BORDER).stroke();
+const drawSignature = (x: number, title: string, name: string) => {
+  doc.roundedRect(x, y, sigWidth, sigHeight, 4).strokeColor(BORDER).stroke();
 
         doc
           .fillColor('#5D6D7E')
@@ -900,19 +901,19 @@ export class PdfService {
           });
 
         doc
-          .moveTo(x + 10, y + 49)
-          .lineTo(x + sigWidth - 10, y + 49)
-          .strokeColor(BLUE)
-          .stroke();
+  .moveTo(x + 10, y + 78)
+  .lineTo(x + sigWidth - 10, y + 78)
+  .strokeColor(BLUE)
+  .stroke();
 
         doc
-          .fillColor('#7F8C8D')
-          .fontSize(7)
-          .font('Helvetica')
-          .text('Signature & date', x + 10, y + 53, {
-            width: sigWidth - 20,
-            lineBreak: false,
-          });
+  .fillColor('#7F8C8D')
+  .fontSize(7)
+  .font('Helvetica')
+  .text('Signature & date', x + 10, y + 84, {
+    width: sigWidth - 20,
+    lineBreak: false,
+  });
       };
 
       drawSignature(margin, 'Collaborateur', collaborateur);
