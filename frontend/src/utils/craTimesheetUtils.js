@@ -3,6 +3,7 @@ export const CRA_DAY_TYPES = {
   CONGE: 'CONGE',
   ABSENCE: 'ABSENCE',
   RTT: 'RTT',
+  ARRET_MALADIE: 'ARRET_MALADIE',
 };
 
 export const CRA_DAY_TYPE_LABELS = {
@@ -10,6 +11,34 @@ export const CRA_DAY_TYPE_LABELS = {
   CONGE: 'Congé',
   ABSENCE: 'Absence',
   RTT: 'RTT',
+  ARRET_MALADIE: 'Arrêt maladie',
+};
+
+export const SPECIAL_ACTIVITY_COLUMNS = {
+  ABSENCE: {
+    id: 'special-absence',
+    nom: 'Absence',
+    type: 'SPECIAL',
+    specialType: CRA_DAY_TYPES.ABSENCE,
+    locked: true,
+    orderIndex: -30,
+  },
+  RTT: {
+    id: 'special-rtt',
+    nom: 'RTT',
+    type: 'SPECIAL',
+    specialType: CRA_DAY_TYPES.RTT,
+    locked: true,
+    orderIndex: -20,
+  },
+  ARRET_MALADIE: {
+    id: 'special-arret-maladie',
+    nom: 'Arrêt maladie',
+    type: 'SPECIAL',
+    specialType: CRA_DAY_TYPES.ARRET_MALADIE,
+    locked: true,
+    orderIndex: -10,
+  },
 };
 
 export const MONTH_NAMES = [
@@ -71,11 +100,7 @@ export const isDateAfter = (dateString, limitString) => {
 export const getDayTotal = (row) => {
   if (!row || row.disabled) return 0;
 
-  if (
-    row.type === CRA_DAY_TYPES.CONGE ||
-    row.type === CRA_DAY_TYPES.ABSENCE ||
-    row.type === CRA_DAY_TYPES.RTT
-  ) {
+  if (row.type === CRA_DAY_TYPES.CONGE) {
     return 1;
   }
 
@@ -104,7 +129,12 @@ export const getSummaryTotals = (rows) => {
       }
 
       if (row.type === CRA_DAY_TYPES.ABSENCE) {
-        totals.absences += 1;
+        totals.absences += getDayTotal(row);
+        return totals;
+      }
+
+      if (row.type === CRA_DAY_TYPES.ARRET_MALADIE) {
+        totals.arretsMaladie += getDayTotal(row);
         return totals;
       }
 
@@ -120,6 +150,7 @@ export const getSummaryTotals = (rows) => {
       travail: 0,
       conges: 0,
       absences: 0,
+      arretsMaladie: 0,
       rtt: 0,
     },
   );
@@ -184,17 +215,42 @@ for (const column of activityColumns) {
 
 if (existingEntries.length > 0) {
   for (const entry of existingEntries) {
-    const columnId =
+    const rawColumnId =
       entry.activityColumn?.id ||
       entry.activity_column?.id ||
       entry.activityColumnId ||
       entry.activity_column_id ||
       entry.columnId;
 
-    if (columnId) {
-      activities[columnId] = Number(entry.duree);
+    const matchedColumn = activityColumns.find((column) => {
+      return (
+        String(column.id) === String(rawColumnId) ||
+        String(column.backendId) === String(rawColumnId)
+      );
+    });
+
+    if (matchedColumn) {
+      activities[matchedColumn.id] = Number(entry.duree);
     }
   }
+
+  const specialColumnForDay = activityColumns.find(
+  (column) => column.specialType === existingDay?.type,
+);
+
+const isSpecialDay =
+  existingDay?.type === CRA_DAY_TYPES.ABSENCE ||
+  existingDay?.type === CRA_DAY_TYPES.RTT ||
+  existingDay?.type === CRA_DAY_TYPES.ARRET_MALADIE;
+
+if (
+  isSpecialDay &&
+  specialColumnForDay &&
+  !activities[specialColumnForDay.id] &&
+  Number(existingDay?.duree || 0) > 0
+) {
+  activities[specialColumnForDay.id] = String(Number(existingDay.duree));
+}
 }
 
     rows.push({
@@ -224,37 +280,40 @@ export const buildCraPayloadFromTimesheet = ({
 }) => {
   const enabledRows = rows.filter((row) => !row.disabled);
 
+  const columnsToSend = activityColumns.map((column, index) => ({
+    id: column.id,
+    nom: column.nom,
+    orderIndex: index,
+    specialType: column.specialType || null,
+    locked: Boolean(column.locked),
+  }));
+
   return {
     mois: Number(mois),
     annee: Number(annee),
-    activityColumns: activityColumns.map((column, index) => ({
+    activityColumns: columnsToSend.map((column, index) => ({
       nom: column.nom,
       orderIndex: index,
     })),
     days: enabledRows.map((row) => {
       const activityEntries = [];
 
-      if (row.type === CRA_DAY_TYPES.TRAVAIL) {
-        activityColumns.forEach((column, index) => {
-          const value = Number(row.activities?.[column.id] || 0);
+      activityColumns.forEach((column, index) => {
+        const value = Number(row.activities?.[column.id] || 0);
 
-          if (value > 0) {
-            activityEntries.push({
-              activityColumnIndex: index,
-              duree: value,
-            });
-          }
-        });
-      }
+        if (value > 0) {
+          activityEntries.push({
+            activityColumnIndex: index,
+            duree: value,
+          });
+        }
+      });
 
       return {
         date: row.date,
         type: row.type,
         duree: getDayTotal(row),
-        commentaire:
-          row.type === CRA_DAY_TYPES.ABSENCE
-            ? row.commentaire || ''
-            : row.commentaire || '',
+        commentaire: row.commentaire || '',
         activityEntries,
       };
     }),
@@ -276,11 +335,26 @@ export const normalizeCraActivityColumns = (cra) => {
 
   return [...columns]
     .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
-    .map((column, index) => ({
-      id: column.id,
-      nom: column.nom || '',
-      orderIndex: column.orderIndex ?? index,
-    }));
+    .map((column, index) => {
+      const name = column.nom || '';
+
+      let specialType = null;
+
+      if (name === 'Absence') specialType = CRA_DAY_TYPES.ABSENCE;
+      if (name === 'RTT') specialType = CRA_DAY_TYPES.RTT;
+      if (name === 'Arrêt maladie') specialType = CRA_DAY_TYPES.ARRET_MALADIE;
+
+      return {
+        id: specialType
+          ? SPECIAL_ACTIVITY_COLUMNS[specialType]?.id || column.id
+          : column.id,
+        backendId: column.id,
+        nom: name,
+        orderIndex: column.orderIndex ?? index,
+        specialType,
+        locked: Boolean(specialType),
+      };
+    });
 };
 
 export const normalizeCraDays = (cra) => {
@@ -308,4 +382,53 @@ export const generateRowsFromExistingCra = ({
     activityColumns,
     rows,
   };
+};
+
+export const isSpecialActivityColumn = (column) => {
+  return Boolean(column?.specialType);
+};
+
+export const shouldShowSpecialColumn = (rows, specialType) => {
+  return rows.some((row) => row.type === specialType);
+};
+
+export const ensureSpecialActivityColumns = (columns, rows) => {
+  const existingById = new Map(columns.map((column) => [column.id, column]));
+
+  const nextColumns = [...columns];
+
+  Object.values(SPECIAL_ACTIVITY_COLUMNS).forEach((specialColumn) => {
+    const isNeeded = shouldShowSpecialColumn(rows, specialColumn.specialType);
+    const alreadyExists = existingById.has(specialColumn.id);
+
+    if (isNeeded && !alreadyExists) {
+      nextColumns.unshift(specialColumn);
+    }
+  });
+
+  return nextColumns.sort((a, b) => {
+    const aOrder = a.orderIndex ?? 0;
+    const bOrder = b.orderIndex ?? 0;
+
+    if (aOrder !== bOrder) return aOrder - bOrder;
+
+    return String(a.nom || '').localeCompare(String(b.nom || ''));
+  });
+};
+
+export const removeUnusedSpecialActivityColumns = (columns, rows) => {
+  return columns.filter((column) => {
+    if (!column.specialType) return true;
+
+    return shouldShowSpecialColumn(rows, column.specialType);
+  });
+};
+
+export const syncSpecialActivityColumns = (columns, rows) => {
+  const withNeededSpecialColumns = ensureSpecialActivityColumns(columns, rows);
+  return removeUnusedSpecialActivityColumns(withNeededSpecialColumns, rows);
+};
+
+export const getSpecialColumnForType = (columns, type) => {
+  return columns.find((column) => column.specialType === type);
 };

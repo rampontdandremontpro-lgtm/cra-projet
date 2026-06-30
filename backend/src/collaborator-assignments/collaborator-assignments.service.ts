@@ -120,29 +120,50 @@ export class CollaboratorAssignmentsService {
     return assignment;
   }
 
-  async findActiveByCollaborator(
-    collaboratorId: number,
-  ): Promise<CollaboratorAssignment> {
-    const assignment = await this.assignmentsRepository.findOne({
-      where: {
-        collaborator: { id: collaboratorId },
-        isActive: true,
-      },
-      relations: {
-        collaborator: true,
-        service: { company: true },
-        assignedBy: true,
-      },
-    });
+  async findActiveByCollaborator(collaboratorId: number) {
+  const assignment = await this.assignmentsRepository.findOne({
+    where: {
+      collaborator: { id: collaboratorId },
+      isActive: true,
+    },
+    relations: {
+      collaborator: true,
+      service: { company: true },
+      assignedBy: true,
+    },
+    order: {
+      startDate: 'DESC',
+    },
+  });
 
-    if (!assignment) {
-      throw new NotFoundException(
-        'Aucune affectation active trouvée pour ce collaborateur',
-      );
-    }
-
-    return assignment;
+  if (!assignment) {
+    throw new NotFoundException(
+      'Aucune affectation active trouvée pour ce collaborateur',
+    );
   }
+
+  const responsableService = await this.usersRepository.findOne({
+    where: {
+      role: UserRole.CLIENT,
+      isActive: true,
+      service: {
+        id: assignment.service.id,
+      },
+    },
+  });
+
+  return {
+    ...assignment,
+    responsableService: responsableService
+      ? {
+          id: responsableService.id,
+          nom: responsableService.nom,
+          prenom: responsableService.prenom,
+          email: responsableService.email,
+        }
+      : null,
+  };
+}
 
   async update(
     id: number,

@@ -10,6 +10,7 @@ import {
   getCraById,
   submitCra,
   updateCra,
+  deleteCra
 } from '../../services/craApi';
 import { getHolidaysByYear } from '../../services/holidayApi';
 
@@ -20,6 +21,7 @@ import {
   generateRowsFromExistingCra,
   getDayTotal,
   getSummaryTotals,
+  isSpecialActivityColumn 
 } from '../../utils/craTimesheetUtils';
 
 import '../../styles/dashboard.css';
@@ -49,10 +51,11 @@ function CraDetailPage() {
   const summaryTotals = useMemo(() => getSummaryTotals(rows), [rows]);
 
   const totalSaisi =
-    summaryTotals.travail +
-    summaryTotals.conges +
-    summaryTotals.absences +
-    summaryTotals.rtt;
+  summaryTotals.travail +
+  summaryTotals.conges +
+  summaryTotals.absences +
+  summaryTotals.arretsMaladie +
+  summaryTotals.rtt;
 
   const isEditable =
     cra?.statut === 'BROUILLON' ||
@@ -162,79 +165,116 @@ function CraDetailPage() {
   };
 
   const addActivityColumn = () => {
-    if (activityColumns.length >= MAX_ACTIVITY_COLUMNS) {
-      showToast('error', 'Tu peux ajouter au maximum 7 activités.');
-      return;
-    }
+  const manualActivityCount = activityColumns.filter(
+    (column) => !isSpecialActivityColumn(column),
+  ).length;
 
-    const newColumn = {
-      id: `local-${Date.now()}`,
-      nom: '',
-      orderIndex: activityColumns.length,
-    };
+  if (manualActivityCount >= MAX_ACTIVITY_COLUMNS) {
+    showToast('error', 'Tu peux ajouter au maximum 7 activités.');
+    return;
+  }
 
-    setActivityColumns((previousColumns) => [...previousColumns, newColumn]);
-
-    setRows((previousRows) =>
-      previousRows.map((row) => ({
-        ...row,
-        activities: {
-          ...(row.activities || {}),
-          [newColumn.id]: '',
-        },
-      })),
-    );
+  const newColumn = {
+    id: `local-${Date.now()}`,
+    nom: '',
+    orderIndex: activityColumns.length,
   };
+
+  setActivityColumns((previousColumns) => [...previousColumns, newColumn]);
+
+  setRows((previousRows) =>
+    previousRows.map((row) => ({
+      ...row,
+      activities: {
+        ...(row.activities || {}),
+        [newColumn.id]: '',
+      },
+    })),
+  );
+};
 
   const validateTimesheet = () => {
-    const cleanColumns = activityColumns.map((column) => ({
-      ...column,
-      nom: column.nom.trim(),
-    }));
+  const manualColumns = activityColumns.filter(
+    (column) => !isSpecialActivityColumn(column),
+  );
 
-    if (cleanColumns.some((column) => !column.nom)) {
-      return 'Chaque colonne d’activité doit avoir un nom avant la soumission.';
+  const emptyManualColumn = manualColumns.some(
+    (column) => !String(column.nom || '').trim(),
+  );
+
+  if (emptyManualColumn) {
+    return 'Chaque colonne d’activité doit avoir un nom avant la soumission.';
+  }
+
+  for (const row of rows) {
+    if (row.disabled) continue;
+
+    const total = getDayTotal(row);
+
+    if (row.type === CRA_DAY_TYPES.TRAVAIL && total <= 0) {
+      return `La durée du ${row.date} doit être supérieure à 0 avant la soumission.`;
     }
 
-    for (const row of rows) {
-      if (row.disabled) continue;
+    if (total > 1) {
+      return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
+    }
 
-      const total = getDayTotal(row);
+    if (
+      row.type === CRA_DAY_TYPES.ABSENCE &&
+      !String(row.commentaire || '').trim()
+    ) {
+      return `Le motif d’absence est obligatoire pour le ${row.date}.`;
+    }
 
-      if (row.type === CRA_DAY_TYPES.TRAVAIL && total <= 0) {
-        return `La durée du ${row.date} doit être supérieure à 0 avant la soumission.`;
+    for (const column of activityColumns) {
+      const value = row.activities?.[column.id];
+
+      if (value === '' || value === null || value === undefined) {
+        continue;
       }
 
-      if (row.type === CRA_DAY_TYPES.TRAVAIL && total > 1) {
-        return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
+      const numberValue = Number(value);
+
+      if (Number.isNaN(numberValue)) {
+        return `Une durée saisie le ${row.date} est invalide.`;
       }
 
-      if (
-        row.type === CRA_DAY_TYPES.ABSENCE &&
-        !String(row.commentaire || '').trim()
-      ) {
-        return `Le motif d’absence est obligatoire pour le ${row.date}.`;
-      }
-
-      for (const value of Object.values(row.activities || {})) {
-        if (value === '' || value === null || value === undefined) continue;
-
-        const numberValue = Number(value);
-
-        if (Number.isNaN(numberValue)) {
-          return `Une durée saisie le ${row.date} est invalide.`;
+      if (isSpecialActivityColumn(column)) {
+        if (numberValue !== 0.5 && numberValue !== 1) {
+          return `Pour le ${row.date}, la durée ${column.nom} doit être égale à 0.5 ou 1 jour.`;
         }
-
-        if (row.type === CRA_DAY_TYPES.TRAVAIL) {
-          if (numberValue < 0.1 || numberValue > 1) {
-            return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
-          }
-        }
+      } else if (numberValue < 0.1 || numberValue > 1) {
+        return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
       }
     }
 
-    return '';
-  };
+    if (
+      [
+        CRA_DAY_TYPES.ABSENCE,
+        CRA_DAY_TYPES.RTT,
+        CRA_DAY_TYPES.ARRET_MALADIE,
+      ].includes(row.type)
+    ) {
+      const hasSpecialDuration = activityColumns.some((column) => {
+        if (column.specialType !== row.type) return false;
+
+        return Number(row.activities?.[column.id] || 0) > 0;
+      });
+
+      if (!hasSpecialDuration) {
+        const typeLabels = {
+  ABSENCE: 'Absence',
+  RTT: 'RTT',
+  ARRET_MALADIE: 'Arrêt maladie',
+};
+
+return `La durée du ${row.date} est obligatoire pour ${typeLabels[row.type]}.`;
+      }
+    }
+  }
+
+  return '';
+};
 
   const buildPayload = () => {
     return buildCraPayloadFromTimesheet({
@@ -312,6 +352,33 @@ function CraDetailPage() {
       );
     }
   };
+
+  const handleDeleteCra = async () => {
+  const confirmDelete = window.confirm(
+    'Voulez-vous vraiment supprimer ce CRA ? Cette action est définitive.',
+  );
+
+  if (!confirmDelete) return;
+
+  try {
+    setSaving(true);
+
+    await deleteCra(cra.id);
+
+    showToast('success', 'CRA supprimé avec succès.');
+
+    window.setTimeout(() => {
+      navigate('/mes-cra');
+    }, 700);
+  } catch (err) {
+    showToast(
+      'error',
+      err.response?.data?.message || 'Impossible de supprimer ce CRA.',
+    );
+  } finally {
+    setSaving(false);
+  }
+};
 
   const getStatusLabel = () => {
     const labels = {
@@ -419,7 +486,13 @@ function CraDetailPage() {
 
                   <div>
                     <label>Service / Client</label>
-                    <input type="text" value={getServiceLabel()} disabled />
+                    <textarea
+  value={getServiceLabel()}
+  disabled
+  readOnly
+  rows={2}
+  className="cra-readonly-textarea"
+/>
                   </div>
 
                   <div>
@@ -461,7 +534,7 @@ function CraDetailPage() {
                         : 'Activités du mois'}
                     </h2>
                     <p className="cra-helper-text">
-                      Les week-ends, jours fériés et jours hors affectation sont
+                      Les week-ends et jours hors affectation sont
                       grisés automatiquement.
                     </p>
                   </div>
@@ -511,6 +584,15 @@ function CraDetailPage() {
 
                   {isEditable && (
                     <>
+                    <button
+                    type="button"
+                    className="delete-draft-btn"
+                    onClick={handleDeleteCra}
+                    disabled={saving}
+                    >
+                      Supprimer
+                      
+                      </button>
                       <button
                         type="button"
                         className="secondary-btn"
@@ -558,14 +640,19 @@ function CraDetailPage() {
                 </div>
 
                 <div className="summary-line red">
-                  <span>Absences</span>
-                  <strong>{summaryTotals.absences.toFixed(1)}</strong>
-                </div>
+  <span>Absences</span>
+  <strong>{summaryTotals.absences.toFixed(1)}</strong>
+</div>
 
-                <div className="summary-line purple">
-                  <span>RTT</span>
-                  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
-                </div>
+<div className="summary-line red">
+  <span>Arrêts maladie</span>
+  <strong>{summaryTotals.arretsMaladie.toFixed(1)}</strong>
+</div>
+
+<div className="summary-line purple">
+  <span>RTT</span>
+  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
+</div>
 
                 <div className="summary-total">
                   <span>Total saisi</span>
@@ -576,9 +663,10 @@ function CraDetailPage() {
               <div className="side-card">
                 <h3>Types d’activité</h3>
                 <div className="legend-line blue">Travail</div>
-                <div className="legend-line green">Congé</div>
-                <div className="legend-line red">Absence</div>
-                <div className="legend-line purple">RTT</div>
+<div className="legend-line green">Congé</div>
+<div className="legend-line red">Absence</div>
+<div className="legend-line red">Arrêt maladie</div>
+<div className="legend-line purple">RTT</div>
               </div>
             </aside>
           </div>

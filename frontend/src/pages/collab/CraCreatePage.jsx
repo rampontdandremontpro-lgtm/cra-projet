@@ -15,6 +15,7 @@ import {
   generateMonthRows,
   getDayTotal,
   getSummaryTotals,
+  isSpecialActivityColumn 
 } from '../../utils/craTimesheetUtils';
 
 import '../../styles/dashboard.css';
@@ -50,10 +51,11 @@ const [annee, setAnnee] = useState(today.getFullYear());
   const summaryTotals = useMemo(() => getSummaryTotals(rows), [rows]);
 
   const totalSaisi =
-    summaryTotals.travail +
-    summaryTotals.conges +
-    summaryTotals.absences +
-    summaryTotals.rtt;
+  summaryTotals.travail +
+  summaryTotals.conges +
+  summaryTotals.absences +
+  summaryTotals.arretsMaladie +
+  summaryTotals.rtt;
 
   useEffect(() => {
     loadInitialData();
@@ -132,7 +134,11 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
 };
 
   const addActivityColumn = () => {
-  if (activityColumns.length >= MAX_ACTIVITY_COLUMNS) {
+  const manualActivityCount = activityColumns.filter(
+    (column) => !isSpecialActivityColumn(column),
+  ).length;
+
+  if (manualActivityCount >= MAX_ACTIVITY_COLUMNS) {
     showToast('error', 'Tu peux ajouter au maximum 7 activités.');
     return;
   }
@@ -323,7 +329,13 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
 
                   <div>
                     <label>Service / Client</label>
-                    <input type="text" value={getServiceLabel()} disabled />
+                    <textarea
+  value={getServiceLabel()}
+  disabled
+  readOnly
+  rows={2}
+  className="cra-readonly-textarea"
+/>
                   </div>
 
                   <div>
@@ -359,7 +371,7 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
                   <div>
                     <h2>Saisie des activités</h2>
                     <p className="cra-helper-text">
-                      Les week-ends, jours fériés et jours hors affectation sont
+                      Les week-ends et jours hors affectation sont
                       grisés automatiquement.
                     </p>
                   </div>
@@ -434,14 +446,19 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
                 </div>
 
                 <div className="summary-line red">
-                  <span>Absences</span>
-                  <strong>{summaryTotals.absences.toFixed(1)}</strong>
-                </div>
+  <span>Absences</span>
+  <strong>{summaryTotals.absences.toFixed(1)}</strong>
+</div>
 
-                <div className="summary-line purple">
-                  <span>RTT</span>
-                  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
-                </div>
+<div className="summary-line red">
+  <span>Arrêts maladie</span>
+  <strong>{summaryTotals.arretsMaladie.toFixed(1)}</strong>
+</div>
+
+<div className="summary-line purple">
+  <span>RTT</span>
+  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
+</div>
 
                 <div className="summary-total">
                   <span>Total saisi</span>
@@ -452,9 +469,10 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
               <div className="side-card">
                 <h3>Types d’activité</h3>
                 <div className="legend-line blue">Travail</div>
-                <div className="legend-line green">Congé</div>
-                <div className="legend-line red">Absence</div>
-                <div className="legend-line purple">RTT</div>
+<div className="legend-line green">Congé</div>
+<div className="legend-line red">Absence</div>
+<div className="legend-line red">Arrêt maladie</div>
+<div className="legend-line purple">RTT</div>
               </div>
             </aside>
           </div>

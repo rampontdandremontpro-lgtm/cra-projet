@@ -1,13 +1,16 @@
+import { useEffect, useRef, useState } from 'react';
+
 import {
   CRA_DAY_TYPES,
   CRA_DAY_TYPE_LABELS,
   formatDateFr,
   getColumnTotal,
   getDayTotal,
+  isSpecialActivityColumn,
+  syncSpecialActivityColumns,
 } from '../../utils/craTimesheetUtils';
 
 import '../../styles/cra/cra-timesheet.css';
-import { useEffect, useRef, useState } from 'react';
 
 function CraTimesheetTable({
   rows,
@@ -16,8 +19,7 @@ function CraTimesheetTable({
   setActivityColumns,
   readOnly = false,
 }) {
-
-    const tableScrollRef = useRef(null);
+  const tableScrollRef = useRef(null);
   const floatingScrollRef = useRef(null);
   const floatingContentRef = useRef(null);
 
@@ -94,6 +96,50 @@ function CraTimesheetTable({
     };
   }, [activityColumns.length, rows.length]);
 
+  const isSpecialType = (type) => {
+    return (
+      type === CRA_DAY_TYPES.ABSENCE ||
+      type === CRA_DAY_TYPES.RTT ||
+      type === CRA_DAY_TYPES.ARRET_MALADIE
+    );
+  };
+
+  const WORK_DURATION_OPTIONS = [
+  '0.1',
+  '0.2',
+  '0.3',
+  '0.4',
+  '0.5',
+  '0.6',
+  '0.7',
+  '0.8',
+  '0.9',
+  '1',
+];
+
+const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
+
+  const syncColumnsAndRows = (nextRows) => {
+    const syncedColumns = syncSpecialActivityColumns(
+      activityColumns,
+      nextRows,
+    );
+
+    setActivityColumns(syncedColumns);
+
+    return nextRows.map((row) => {
+      const nextActivities = {};
+
+      syncedColumns.forEach((column) => {
+        nextActivities[column.id] = row.activities?.[column.id] ?? '';
+      });
+
+      return {
+        ...row,
+        activities: nextActivities,
+      };
+    });
+  };
 
   const updateActivityColumnName = (columnId, value) => {
     setActivityColumns((previousColumns) =>
@@ -109,7 +155,17 @@ function CraTimesheetTable({
   };
 
   const removeActivityColumn = (columnId) => {
-    if (activityColumns.length <= 1) return;
+    const columnToRemove = activityColumns.find(
+      (column) => column.id === columnId,
+    );
+
+    if (!columnToRemove || columnToRemove.locked) return;
+
+    const normalColumns = activityColumns.filter(
+      (column) => !isSpecialActivityColumn(column),
+    );
+
+    if (normalColumns.length <= 1) return;
 
     setActivityColumns((previousColumns) =>
       previousColumns.filter((column) => column.id !== columnId),
@@ -129,27 +185,30 @@ function CraTimesheetTable({
   };
 
   const updateRowType = (rowIndex, value) => {
-    setRows((previousRows) =>
-      previousRows.map((row, index) => {
+    setRows((previousRows) => {
+      const nextRows = previousRows.map((row, index) => {
         if (index !== rowIndex) return row;
 
-        const shouldClearActivities =
-  value === CRA_DAY_TYPES.CONGE ||
-  value === CRA_DAY_TYPES.ABSENCE ||
-  value === CRA_DAY_TYPES.RTT;
+        const nextActivities = {};
+
+        Object.keys(row.activities || {}).forEach((key) => {
+          nextActivities[key] = '';
+        });
 
         return {
           ...row,
           type: value,
-          commentaire: value === CRA_DAY_TYPES.ABSENCE ? row.commentaire : '',
-          activities: shouldClearActivities
-            ? Object.fromEntries(
-                Object.keys(row.activities || {}).map((key) => [key, '']),
-              )
-            : row.activities,
+          commentaire:
+            value === CRA_DAY_TYPES.ABSENCE ? row.commentaire : '',
+          activities:
+            value === CRA_DAY_TYPES.TRAVAIL
+              ? row.activities
+              : nextActivities,
         };
-      }),
-    );
+      });
+
+      return syncColumnsAndRows(nextRows);
+    });
   };
 
   const updateRowCommentaire = (rowIndex, value) => {
@@ -171,13 +230,6 @@ function CraTimesheetTable({
         if (index !== rowIndex) return row;
         if (row.disabled) return row;
 
-        if (
-          row.type === CRA_DAY_TYPES.CONGE ||
-          row.type === CRA_DAY_TYPES.ABSENCE
-        ) {
-          return row;
-        }
-
         return {
           ...row,
           activities: {
@@ -193,8 +245,12 @@ function CraTimesheetTable({
     const classes = ['timesheet-row'];
 
     if (row.disabled) classes.push('timesheet-row-disabled');
+    if (row.isHoliday) classes.push('timesheet-row-holiday');
     if (row.type === CRA_DAY_TYPES.CONGE) classes.push('timesheet-row-conge');
     if (row.type === CRA_DAY_TYPES.ABSENCE) classes.push('timesheet-row-absence');
+    if (row.type === CRA_DAY_TYPES.ARRET_MALADIE) {
+      classes.push('timesheet-row-absence');
+    }
     if (row.type === CRA_DAY_TYPES.RTT) classes.push('timesheet-row-rtt');
 
     const total = getDayTotal(row);
@@ -203,7 +259,7 @@ function CraTimesheetTable({
       classes.push('timesheet-row-error');
     }
 
-    if (row.type === CRA_DAY_TYPES.RTT && total !== 0 && total !== 0.5) {
+    if (isSpecialType(row.type) && total > 1) {
       classes.push('timesheet-row-error');
     }
 
@@ -211,61 +267,165 @@ function CraTimesheetTable({
   };
 
   const getDisabledReason = (row) => {
-    if (row.isWeekend) return 'Week-end';
     if (row.isHoliday) return 'Jour férié';
+    if (row.isWeekend) return 'Week-end';
     if (row.isBeforeAssignment || row.isAfterAssignment) return 'Hors affectation';
     return 'Non saisissable';
   };
 
-  const isActivityInputDisabled = (row) => {
-    return (
-      readOnly ||
-      row.disabled ||
-      row.type === CRA_DAY_TYPES.CONGE ||
-      row.type === CRA_DAY_TYPES.ABSENCE ||
-      row.type === CRA_DAY_TYPES.RTT
-    );
+  const isActivityInputDisabled = (row, column) => {
+  if (readOnly || row.disabled) return true;
+
+  if (row.type === CRA_DAY_TYPES.CONGE) return true;
+
+  if (isSpecialActivityColumn(column)) {
+    return row.type !== column.specialType;
+  }
+
+  return ![
+    CRA_DAY_TYPES.TRAVAIL,
+    CRA_DAY_TYPES.ABSENCE,
+    CRA_DAY_TYPES.RTT,
+    CRA_DAY_TYPES.ARRET_MALADIE,
+  ].includes(row.type);
+};
+
+  const renderActivityCell = (row, rowIndex, column) => {
+    if (row.disabled) {
+      return <span className="timesheet-empty-cell"></span>;
+    }
+
+    if (isSpecialActivityColumn(column)) {
+      if (row.type !== column.specialType) {
+        return <span className="timesheet-empty-cell"></span>;
+      }
+
+      if (column.specialType === CRA_DAY_TYPES.ABSENCE) {
+        return (
+          <div className="timesheet-special-cell">
+            <input
+              type="text"
+              value={row.commentaire || ''}
+              disabled={readOnly}
+              onChange={(event) =>
+                updateRowCommentaire(rowIndex, event.target.value)
+              }
+              placeholder="Motif"
+              className="timesheet-special-reason-input"
+            />
+
+            <select
+              value={row.activities?.[column.id] || ''}
+              disabled={readOnly}
+              onChange={(event) =>
+                updateActivityValue(rowIndex, column.id, event.target.value)
+              }
+              className="timesheet-special-duration-select"
+            >
+              <option value="">Durée</option>
+              <option value="0.5">0.5</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+        );
+      }
+
+      return (
+        <select
+          value={row.activities?.[column.id] || ''}
+          disabled={readOnly}
+          onChange={(event) =>
+            updateActivityValue(rowIndex, column.id, event.target.value)
+          }
+          className="timesheet-special-duration-select"
+        >
+          <option value="">Durée</option>
+          <option value="0.5">0.5</option>
+          <option value="1">1</option>
+        </select>
+      );
+    }
+
+    if (
+  ![
+    CRA_DAY_TYPES.TRAVAIL,
+    CRA_DAY_TYPES.ABSENCE,
+    CRA_DAY_TYPES.RTT,
+    CRA_DAY_TYPES.ARRET_MALADIE,
+  ].includes(row.type)
+) {
+  return <span className="timesheet-empty-cell"></span>;
+}
+
+    const durationOptions =
+  row.type === CRA_DAY_TYPES.TRAVAIL
+    ? WORK_DURATION_OPTIONS
+    : SPECIAL_DURATION_OPTIONS;
+
+return (
+  <select
+    value={row.activities?.[column.id] || ''}
+    disabled={isActivityInputDisabled(row, column)}
+    onChange={(event) =>
+      updateActivityValue(rowIndex, column.id, event.target.value)
+    }
+    className="timesheet-duration-select"
+  >
+    <option value="">0</option>
+
+    {durationOptions.map((duration) => (
+      <option key={duration} value={duration}>
+        {duration}
+      </option>
+    ))}
+  </select>
+);
   };
 
   return (
-  <div className="timesheet-scroll-container">
-    <div className="timesheet-scroll old-cra-timesheet" ref={tableScrollRef}>
-      <table className="timesheet-table">
-        <colgroup>
-  <col className="timesheet-col-date" />
-  <col className="timesheet-col-day" />
-  <col className="timesheet-col-type" />
-
-  {activityColumns.map((column) => (
-    <col key={`col-${column.id}`} className="timesheet-col-activity" />
-  ))}
-
-  <col className="timesheet-col-total" />
-</colgroup>
-        <thead>
-          <tr>
-            <th className="timesheet-date-col">Date</th>
-            <th className="timesheet-day-col">Jour</th>
-            <th className="timesheet-type-col">Type</th>
+    <div className="timesheet-scroll-container">
+      <div className="timesheet-scroll old-cra-timesheet" ref={tableScrollRef}>
+        <table className="timesheet-table">
+          <colgroup>
+            <col className="timesheet-col-date" />
+            <col className="timesheet-col-day" />
+            <col className="timesheet-col-type" />
 
             {activityColumns.map((column) => (
-              <th key={column.id} className="timesheet-activity-col">
-                {readOnly ? (
-                  <span>{column.nom}</span>
-                ) : (
-                  <div className="timesheet-column-header">
-                  <textarea
-  value={column.nom}
-  title={column.nom}
-  rows={column.nom.length > 14 ? 2 : 1}
-  onFocus={(event) => event.target.select()}
-  onChange={(event) =>
-    updateActivityColumnName(column.id, event.target.value)
-  }
-  placeholder="Nom activité"
-/>
+              <col key={`col-${column.id}`} className="timesheet-col-activity" />
+            ))}
 
-                    {activityColumns.length > 1 && (
+            <col className="timesheet-col-total" />
+          </colgroup>
+
+          <thead>
+            <tr>
+              <th className="timesheet-date-col">Date</th>
+              <th className="timesheet-day-col">Jour</th>
+              <th className="timesheet-type-col">Type</th>
+
+              {activityColumns.map((column) => (
+                <th key={column.id} className="timesheet-activity-col">
+                  {readOnly || column.locked ? (
+                    <span className="timesheet-locked-header">
+                      {column.nom || 'Nom activité'}
+                    </span>
+                  ) : (
+                    <div className="timesheet-column-header">
+                      <textarea
+                        value={column.nom}
+                        title={column.nom}
+                        rows={column.nom.length > 14 ? 2 : 1}
+                        onFocus={(event) => event.target.select()}
+                        onChange={(event) =>
+                          updateActivityColumnName(
+                            column.id,
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Nom activité"
+                      />
+
                       <button
                         type="button"
                         onClick={() => removeActivityColumn(column.id)}
@@ -273,134 +433,100 @@ function CraTimesheetTable({
                       >
                         ×
                       </button>
-                    )}
-                  </div>
-                )}
-              </th>
-            ))}
-
-            <th className="timesheet-total-col">Total</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {rows.map((row, rowIndex) => {
-            const rowTotal = getDayTotal(row);
-
-            return (
-              <tr key={row.date} className={getRowClassName(row)}>
-                <td>{formatDateFr(row.date)}</td>
-                <td>{row.jour}</td>
-
-                <td>
-                  {row.disabled ? (
-                    <span className="timesheet-disabled-label">
-                      {getDisabledReason(row)}
-                    </span>
-                  ) : readOnly ? (
-                    <span>{CRA_DAY_TYPE_LABELS[row.type]}</span>
-                  ) : (
-                    <select
-                      className={`type-select type-${row.type.toLowerCase()}`}
-                      value={row.type}
-                      onChange={(event) =>
-                        updateRowType(rowIndex, event.target.value)
-                      }
-                    >
-                      <option value={CRA_DAY_TYPES.TRAVAIL}>Travail</option>
-                      <option value={CRA_DAY_TYPES.CONGE}>Congé</option>
-                      <option value={CRA_DAY_TYPES.ABSENCE}>Absence</option>
-                      <option value={CRA_DAY_TYPES.RTT}>RTT</option>
-                    </select>
+                    </div>
                   )}
-                </td>
+                </th>
+              ))}
 
-                {activityColumns.map((column, columnIndex) => (
-                  <td key={`${row.date}-${column.id}`}>
-                    {row.type === CRA_DAY_TYPES.ABSENCE &&
-                    !row.disabled &&
-                    columnIndex === 0 ? (
-                      <input
-                        type="text"
-                        value={row.commentaire || ''}
-                        disabled={readOnly}
-                        onChange={(event) =>
-                          updateRowCommentaire(rowIndex, event.target.value)
-                        }
-                        placeholder="Motif absence"
-                        className="timesheet-absence-input"
-                      />
-                    ) : row.type === CRA_DAY_TYPES.ABSENCE && !row.disabled ? (
-                      <span className="timesheet-empty-cell"></span>
+              <th className="timesheet-total-col">Total</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row, rowIndex) => {
+              const rowTotal = getDayTotal(row);
+
+              return (
+                <tr key={row.date} className={getRowClassName(row)}>
+                  <td>{formatDateFr(row.date)}</td>
+                  <td>{row.jour}</td>
+
+                  <td>
+                    {row.disabled ? (
+                      <span className="timesheet-disabled-label">
+                        {getDisabledReason(row)}
+                      </span>
+                    ) : readOnly ? (
+                      <span>{CRA_DAY_TYPE_LABELS[row.type]}</span>
                     ) : (
-                      <input
-                        type="number"
-                        min={row.type === CRA_DAY_TYPES.RTT ? '0.5' : '0.1'}
-                        max={row.type === CRA_DAY_TYPES.RTT ? '0.5' : '1'}
-                        step={row.type === CRA_DAY_TYPES.RTT ? '0.5' : '0.1'}
-                        value={row.activities?.[column.id] || ''}
-                        disabled={isActivityInputDisabled(row)}
+                      <select
+                        className={`type-select type-${row.type.toLowerCase()}`}
+                        value={row.type}
                         onChange={(event) =>
-                          updateActivityValue(
-                            rowIndex,
-                            column.id,
-                            event.target.value,
-                          )
+                          updateRowType(rowIndex, event.target.value)
                         }
-                        placeholder={
-                          row.disabled ||
-                          row.type === CRA_DAY_TYPES.CONGE ||
-                          row.type === CRA_DAY_TYPES.ABSENCE ||
-                          row.type === CRA_DAY_TYPES.RTT
-                            ? ''
-                            : '0'
-                        }
-                      />
+                      >
+                        <option value={CRA_DAY_TYPES.TRAVAIL}>Travail</option>
+                        <option value={CRA_DAY_TYPES.CONGE}>Congé</option>
+                        <option value={CRA_DAY_TYPES.ABSENCE}>Absence</option>
+                        <option value={CRA_DAY_TYPES.RTT}>RTT</option>
+                        <option value={CRA_DAY_TYPES.ARRET_MALADIE}>
+                          Arrêt maladie
+                        </option>
+                      </select>
                     )}
                   </td>
-                ))}
 
-                <td className="timesheet-total-cell">
-                  {row.disabled ? '-' : rowTotal.toFixed(1)}
+                  {activityColumns.map((column) => (
+                    <td key={`${row.date}-${column.id}`}>
+                      {renderActivityCell(row, rowIndex, column)}
+                    </td>
+                  ))}
+
+                  <td className="timesheet-total-cell">
+                    {row.disabled ? '-' : rowTotal.toFixed(1)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+
+          <tfoot>
+            <tr>
+              <td colSpan={3} className="timesheet-footer-label">
+                TOTAL PAR ACTIVITÉ
+              </td>
+
+              {activityColumns.map((column) => (
+                <td
+                  key={`total-${column.id}`}
+                  className="timesheet-footer-total-cell"
+                >
+                  {getColumnTotal(rows, column.id).toFixed(1)}
                 </td>
-              </tr>
-            );
-          })}
-        </tbody>
+              ))}
 
-        <tfoot>
-  <tr>
-    <td colSpan={3} className="timesheet-footer-label">
-      TOTAL PAR ACTIVITÉ
-    </td>
+              <td className="timesheet-footer-grand-total">
+                {rows
+                  .reduce((sum, row) => sum + getDayTotal(row), 0)
+                  .toFixed(1)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-    {activityColumns.map((column) => (
-      <td key={`total-${column.id}`} className="timesheet-footer-total-cell">
-        {getColumnTotal(rows, column.id).toFixed(1)}
-      </td>
-    ))}
-
-    <td className="timesheet-footer-grand-total">
-      {rows
-        .reduce((sum, row) => sum + getDayTotal(row), 0)
-        .toFixed(1)}
-    </td>
-  </tr>
-</tfoot>
-           </table>
+      <div
+        className={`timesheet-floating-scrollbar ${
+          showFloatingScrollbar ? 'visible' : ''
+        }`}
+        ref={floatingScrollRef}
+        style={floatingScrollbarStyle}
+      >
+        <div ref={floatingContentRef}></div>
+      </div>
     </div>
-
-    <div
-      className={`timesheet-floating-scrollbar ${
-        showFloatingScrollbar ? 'visible' : ''
-      }`}
-      ref={floatingScrollRef}
-      style={floatingScrollbarStyle}
-    >
-      <div ref={floatingContentRef}></div>
-    </div>
-  </div>
-);
+  );
 }
 
 export default CraTimesheetTable;

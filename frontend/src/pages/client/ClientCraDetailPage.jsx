@@ -2,12 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
+import CraTimesheetTable from '../../components/cra/CraTimesheetTable';
+
 import {
   downloadCraPdf,
   getCraById,
   refuseCraByClient,
   validateCraByClient,
 } from '../../services/craApi';
+import { getHolidaysByYear } from '../../services/holidayApi';
+
+import {
+  MONTH_NAMES,
+  generateRowsFromExistingCra,
+  getSummaryTotals,
+} from '../../utils/craTimesheetUtils';
 
 import '../../styles/dashboard.css';
 import '../../styles/cra.css';
@@ -17,69 +26,75 @@ export default function ClientCraDetailPage() {
   const navigate = useNavigate();
 
   const [cra, setCra] = useState(null);
+  const [activityColumns, setActivityColumns] = useState([]);
+  const [rows, setRows] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [observation, setObservation] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [toast, setToast] = useState(null);
+
+  const canValidate = cra?.statut === 'SOUMIS_CLIENT';
+
+  const summaryTotals = useMemo(() => getSummaryTotals(rows), [rows]);
+
+  const totalSaisi =
+    summaryTotals.travail +
+    summaryTotals.conges +
+    summaryTotals.absences +
+    summaryTotals.rtt;
 
   useEffect(() => {
     loadCra();
   }, [id]);
 
+  const showToast = (type, message) => {
+    setToast({ type, message });
+
+    window.setTimeout(() => {
+      setToast(null);
+    }, 3500);
+  };
+
   const loadCra = async () => {
     try {
+      setLoading(true);
+
       const data = await getCraById(id);
+
+      let holidayDates = [];
+
+      try {
+        const holidays = await getHolidaysByYear(Number(data.annee));
+        holidayDates = holidays.map((holiday) =>
+          String(holiday.date).split('T')[0],
+        );
+      } catch {
+        holidayDates = [];
+      }
+
+      const normalized = generateRowsFromExistingCra({
+        cra: data,
+        assignment: null,
+        holidayDates,
+      });
+
       setCra(data);
+      setActivityColumns(normalized.activityColumns);
+      setRows(normalized.rows);
     } catch (err) {
-      console.error(err);
-      setError('Impossible de charger le CRA.');
+      showToast(
+        'error',
+        err.response?.data?.message || 'Impossible de charger le CRA.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const jours = cra?.jours || cra?.days || [];
-
-  const canValidate = cra?.statut === 'SOUMIS_CLIENT';
-
-  const totals = useMemo(() => {
-    return jours.reduce(
-      (acc, jour) => {
-        const duree = Number(jour.duree || 0);
-
-        if (jour.type === 'TRAVAIL') acc.travail += duree;
-        if (jour.type === 'CONGE') acc.conge += duree;
-        if (jour.type === 'ABSENCE') acc.absence += duree;
-        if (jour.type === 'RTT') acc.rtt += duree;
-
-        return acc;
-      },
-      {
-        travail: 0,
-        conge: 0,
-        absence: 0,
-        rtt: 0,
-      },
-    );
-  }, [jours]);
-
-  const getMonthName = (monthNumber) =>
-    [
-      '',
-      'Janvier',
-      'Février',
-      'Mars',
-      'Avril',
-      'Mai',
-      'Juin',
-      'Juillet',
-      'Août',
-      'Septembre',
-      'Octobre',
-      'Novembre',
-      'Décembre',
-    ][Number(monthNumber)] || '-';
+  const getMonthName = (monthNumber) => {
+    return MONTH_NAMES[Number(monthNumber)] || '-';
+  };
 
   const getStatusLabel = (statut) => {
     const labels = {
@@ -91,13 +106,22 @@ export default function ClientCraDetailPage() {
       ARCHIVE: 'Archivé',
     };
 
-    return labels[statut] || statut;
+    return labels[statut] || statut || '-';
+  };
+
+  const getStatusClassName = () => {
+    if (cra?.statut === 'SOUMIS_CLIENT') return 'status-pending';
+    if (cra?.statut?.includes('REFUSE')) return 'status-refused';
+    if (cra?.statut?.includes('VALIDE')) return 'status-approved';
+    if (cra?.statut === 'ARCHIVE') return 'status-approved';
+
+    return 'status-draft';
   };
 
   const getCollaboratorName = () => {
-    return `${cra?.collaborateur?.prenom || ''} ${
-      cra?.collaborateur?.nom || ''
-    }`.trim();
+    return [cra?.collaborateur?.prenom, cra?.collaborateur?.nom]
+      .filter(Boolean)
+      .join(' ');
   };
 
   const getServiceLabel = () => {
@@ -108,35 +132,19 @@ export default function ClientCraDetailPage() {
       .join(' - ');
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-
-    const datePart = dateString.split('T')[0];
-    const [year, month, day] = datePart.split('-');
-
-    return `${day}/${month}/${year}`;
-  };
-
-  const formatDuration = (duree) => {
-    const value = Number(duree);
-
-    if (value === 0.5) return '0.5 jour';
-    if (value === 1) return '1 jour';
-
-    return `${value} jour(s)`;
-  };
-
   const handleDownloadPdf = async () => {
     try {
       await downloadCraPdf(cra);
     } catch (err) {
-      console.error(err);
-      setError("Impossible de télécharger le PDF.");
+      showToast(
+        'error',
+        err.response?.data?.message || 'Impossible de télécharger le PDF.',
+      );
     }
   };
 
   const handleValidate = async () => {
-    const confirmValidation = confirm(
+    const confirmValidation = window.confirm(
       `Valider le CRA de ${getCollaboratorName()} pour ${getMonthName(
         cra.mois,
       )} ${cra.annee} ?`,
@@ -144,21 +152,19 @@ export default function ClientCraDetailPage() {
 
     if (!confirmValidation) return;
 
-    setSaving(true);
-    setError('');
-    setSuccess('');
-
     try {
-      await validateCraByClient(cra.id);
-      setSuccess('CRA validé avec succès.');
+      setSaving(true);
 
-      setTimeout(() => {
+      await validateCraByClient(cra.id);
+
+      showToast('success', 'CRA validé avec succès.');
+
+      window.setTimeout(() => {
         navigate('/client/historique');
       }, 700);
     } catch (err) {
-      console.error(err);
-
-      setError(
+      showToast(
+        'error',
         err.response?.data?.message || 'Impossible de valider ce CRA.',
       );
     } finally {
@@ -168,11 +174,11 @@ export default function ClientCraDetailPage() {
 
   const handleRefuse = async () => {
     if (!observation.trim()) {
-      setError('Le motif de refus est obligatoire pour refuser un CRA.');
+      showToast('error', 'Le motif de refus est obligatoire.');
       return;
     }
 
-    const confirmRefusal = confirm(
+    const confirmRefusal = window.confirm(
       `Refuser le CRA de ${getCollaboratorName()} pour ${getMonthName(
         cra.mois,
       )} ${cra.annee} ?`,
@@ -180,26 +186,33 @@ export default function ClientCraDetailPage() {
 
     if (!confirmRefusal) return;
 
-    setSaving(true);
-    setError('');
-    setSuccess('');
-
     try {
-      await refuseCraByClient(cra.id, observation.trim());
-      setSuccess('CRA refusé avec succès.');
+      setSaving(true);
 
-      setTimeout(() => {
+      await refuseCraByClient(cra.id, observation.trim());
+
+      showToast('success', 'CRA refusé avec succès.');
+
+      window.setTimeout(() => {
         navigate('/client/historique');
       }, 700);
     } catch (err) {
-      console.error(err);
-
-      setError(
+      showToast(
+        'error',
         err.response?.data?.message || 'Impossible de refuser ce CRA.',
       );
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleBack = () => {
+    if (canValidate) {
+      navigate('/client/cra-a-valider');
+      return;
+    }
+
+    navigate('/client/historique');
   };
 
   if (loading) {
@@ -221,6 +234,12 @@ export default function ClientCraDetailPage() {
 
         <main className="dashboard-content client-cra-detail">
           <p className="empty-text">CRA introuvable.</p>
+
+          {toast && (
+            <div className={`cra-toast cra-toast-${toast.type}`}>
+              {toast.message}
+            </div>
+          )}
         </main>
       </div>
     );
@@ -231,188 +250,212 @@ export default function ClientCraDetailPage() {
       <Sidebar />
 
       <main className="dashboard-content client-cra-detail">
-        <div className="cra-page-title">
-          <p className="breadcrumb">Espace client / Détail CRA</p>
+        <div className="cra-page">
+          <div className="cra-page-title">
+            <p className="breadcrumb">Espace client / Détail CRA</p>
 
-          <h1>
-            CRA — {getMonthName(cra.mois)} {cra.annee}
-          </h1>
-        </div>
-
-        <section className="cra-main-card">
-          <div className="cra-section-header">
-            <h2>Validation du CRA</h2>
-
-            <span
-              className={`status-badge status-${cra.statut.toLowerCase()}`}
-            >
-              {getStatusLabel(cra.statut)}
-            </span>
+            <h1>
+              CRA — {getMonthName(cra.mois)} {cra.annee}
+            </h1>
           </div>
 
-          <div className="cra-info-grid">
-            <label>
-              Collaborateur
-              <input type="text" value={getCollaboratorName()} disabled readOnly />
-            </label>
+          <div className="cra-create-layout">
+            <div>
+              <section className="cra-main-card">
+                <div className="cra-section-header">
+                  <h2>Validation du CRA</h2>
 
-            <label>
-              Entreprise
-              <input
-                type="text"
-                value={cra.service?.company?.nom || '-'}
-                disabled
-                readOnly
-              />
-            </label>
+                  <span className={`status-side ${getStatusClassName()}`}>
+                    {getStatusLabel(cra.statut)}
+                  </span>
+                </div>
 
-            <label>
-              Service
-              <input type="text" value={getServiceLabel()} disabled readOnly />
-            </label>
+                <div className="cra-info-grid">
+                  <div>
+                    <label>Collaborateur</label>
+                    <input
+                      type="text"
+                      value={getCollaboratorName()}
+                      disabled
+                      readOnly
+                    />
+                  </div>
 
-            <label>
-              Période
-              <input
-                type="text"
-                value={`${getMonthName(cra.mois)} ${cra.annee}`}
-                disabled
-                readOnly
-              />
-            </label>
-          </div>
-        </section>
+                  <div>
+                    <label>Entreprise</label>
+                    <input
+                      type="text"
+                      value={cra.service?.company?.nom || '-'}
+                      disabled
+                      readOnly
+                    />
+                  </div>
 
-        <section className="dashboard-cards client-summary-cards">
-  <div className="dashboard-card client-stat-card stat-travail">
-    <span>Jours travaillés</span>
-    <strong>{totals.travail}</strong>
-  </div>
+                  <div>
+                    <label>Service</label>
+                    <input
+                      type="text"
+                      value={getServiceLabel()}
+                      disabled
+                      readOnly
+                    />
+                  </div>
 
-  <div className="dashboard-card client-stat-card stat-conge">
-    <span>Congés</span>
-    <strong>{totals.conge}</strong>
-  </div>
+                  <div>
+                    <label>Période</label>
+                    <input
+                      type="text"
+                      value={`${getMonthName(cra.mois)} ${cra.annee}`}
+                      disabled
+                      readOnly
+                    />
+                  </div>
+                </div>
+              </section>
 
-  <div className="dashboard-card client-stat-card stat-absence">
-    <span>Absences</span>
-    <strong>{totals.absence}</strong>
-  </div>
+              <section className="cra-main-card">
+                <div className="cra-section-header">
+                  <div>
+                    <h2>Tableau des activités déclarées</h2>
+                    <p className="cra-helper-text">
+                      Lecture du CRA soumis par le collaborateur.
+                    </p>
+                  </div>
 
-  <div className="dashboard-card client-stat-card stat-rtt">
-    <span>RTT</span>
-    <strong>{totals.rtt}</strong>
-  </div>
-</section>
+                  <button
+                    type="button"
+                    className="add-line-btn"
+                    onClick={handleDownloadPdf}
+                    disabled={saving}
+                  >
+                    Télécharger PDF
+                  </button>
+                </div>
 
-        <section className="dashboard-panel cra-panel">
-          <div className="panel-header">
-            <div className="panel-title">
-              <span className="panel-icon">📅</span>
+                <CraTimesheetTable
+                  rows={rows}
+                  setRows={setRows}
+                  activityColumns={activityColumns}
+                  setActivityColumns={setActivityColumns}
+                  readOnly
+                />
+              </section>
 
-              <div>
-                <h2>Tableau des jours déclarés</h2>
-                <p>{jours.length} journée(s)</p>
-              </div>
+              <section className="cra-main-card client-observation-card">
+                <div className="cra-section-header">
+                  <h2>Observations du client</h2>
+                </div>
+
+                <div style={{ padding: '24px' }}>
+                  <textarea
+                    value={observation}
+                    onChange={(event) => setObservation(event.target.value)}
+                    disabled={!canValidate || saving}
+                    placeholder={
+                      canValidate
+                        ? 'Ajoutez une observation ou un motif de refus...'
+                        : 'Le CRA a déjà été traité.'
+                    }
+                    rows={5}
+                    style={{
+                      width: '100%',
+                      resize: 'vertical',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+
+                <div className="cra-form-actions">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={handleBack}
+                    disabled={saving}
+                  >
+                    Retour
+                  </button>
+
+                  {canValidate && (
+                    <>
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        onClick={handleValidate}
+                        disabled={saving}
+                      >
+                        {saving ? 'Validation...' : 'Valider le CRA'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="delete-draft-btn"
+                        onClick={handleRefuse}
+                        disabled={saving}
+                      >
+                        {saving ? 'Refus...' : 'Refuser le CRA'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </section>
             </div>
 
-            <button type="button" className="view-btn" onClick={handleDownloadPdf}>
-              👁 PDF
-            </button>
+            <aside className="cra-side-panel">
+              <div className="side-card">
+                <h3>Statut</h3>
+                <span className={`status-side ${getStatusClassName()}`}>
+                  {getStatusLabel(cra.statut)}
+                </span>
+              </div>
+
+              <div className="side-card">
+                <h3>Résumé du mois</h3>
+
+                <div className="summary-line blue">
+                  <span>Jours travaillés</span>
+                  <strong>{summaryTotals.travail.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-line green">
+                  <span>Congés</span>
+                  <strong>{summaryTotals.conges.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-line red">
+                  <span>Absences</span>
+                  <strong>{summaryTotals.absences.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-line purple">
+                  <span>RTT</span>
+                  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
+                </div>
+
+                <div className="summary-total">
+                  <span>Total saisi</span>
+                  <strong>{totalSaisi.toFixed(1)} jour(s)</strong>
+                </div>
+              </div>
+
+              <div className="side-card">
+                <h3>Types d’activité</h3>
+                <div className="legend-line blue">Travail</div>
+                <div className="legend-line green">Congé</div>
+                <div className="legend-line red">Absence</div>
+                <div className="legend-line purple">RTT</div>
+              </div>
+            </aside>
           </div>
+        </div>
 
-          <table className="cra-dashboard-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Durée</th>
-                <th>Commentaire</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {jours.map((jour) => (
-                <tr key={jour.id} className={`cra-day-row row-${jour.type.toLowerCase()}`}>
-                  <td>{formatDate(jour.date)}</td>
-
-                  <td>
-                    <span className={`cra-type-badge badge-${jour.type.toLowerCase()}`}>
-                     {jour.type}
-                    </span>
-                  </td>
-
-                  <td>{formatDuration(jour.duree)}</td>
-
-                  <td>{jour.commentaire || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-
-        <section className="cra-main-card client-observation-card">
-          <div className="cra-section-header">
-            <h2>Observations du client</h2>
+        {toast && (
+          <div className={`cra-toast cra-toast-${toast.type}`}>
+            {toast.message}
           </div>
-
-          <div style={{ padding: '24px' }}>
-            <textarea
-              value={observation}
-              onChange={(e) => setObservation(e.target.value)}
-              disabled={!canValidate}
-              placeholder={
-                canValidate
-                  ? 'Ajoutez une observation ou un motif de refus...'
-                  : 'Le CRA a déjà été traité.'
-              }
-              rows={5}
-              style={{
-                width: '100%',
-                resize: 'vertical',
-                border: '1px solid #cbd5e1',
-                borderRadius: '12px',
-                padding: '14px',
-                fontFamily: 'inherit',
-              }}
-            />
-          </div>
-
-          {error && <div className="cra-error">{error}</div>}
-          {success && <div className="cra-success">{success}</div>}
-
-          <div className="cra-form-actions">
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => navigate('/client/cra-a-valider')}
-            >
-              Retour
-            </button>
-
-            {canValidate && (
-              <>
-                <button
-                  type="button"
-                  className="primary-btn"
-                  onClick={handleValidate}
-                  disabled={saving}
-                >
-                  Valider le CRA
-                </button>
-
-                <button
-                  type="button"
-                  className="delete-draft-btn"
-                  onClick={handleRefuse}
-                  disabled={saving}
-                >
-                  Refuser le CRA
-                </button>
-              </>
-            )}
-          </div>
-        </section>
+        )}
       </main>
     </div>
   );

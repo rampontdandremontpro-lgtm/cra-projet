@@ -15,6 +15,7 @@ export enum CraDayType {
   CONGE = 'CONGE',
   ABSENCE = 'ABSENCE',
   RTT = 'RTT',
+  ARRET_MALADIE = 'ARRET_MALADIE',
 }
 
 @Entity('cra_days')

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
 import { downloadCraPdf, getMyCra } from '../../services/craApi';
+import { getMyActiveAssignment } from '../../services/collaboratorAssignmentApi';
 
 import '../../styles/dashboard.css';
 
@@ -11,22 +12,30 @@ export default function DashboardPage() {
 
   const [cras, setCras] = useState([]);
   const [loadingCra, setLoadingCra] = useState(true);
+  const [assignment, setAssignment] = useState(null);
 
   useEffect(() => {
-    loadCra();
-  }, []);
+  loadCra();
+}, []);
 
-  const loadCra = async () => {
-    try {
-      const data = await getMyCra();
-      setCras(data);
-    } catch (error) {
-      console.error(error);
-      alert("Impossible de charger vos CRA.");
-    } finally {
-      setLoadingCra(false);
-    }
-  };
+const loadCra = async () => {
+  try {
+    setLoadingCra(true);
+
+    const [craData, activeAssignment] = await Promise.all([
+      getMyCra(),
+      getMyActiveAssignment(),
+    ]);
+
+    setCras(craData);
+    setAssignment(activeAssignment);
+  } catch (error) {
+    console.error(error);
+    alert("Impossible de charger le tableau de bord.");
+  } finally {
+    setLoadingCra(false);
+  }
+};
 
   const handleViewCra = async (cra) => {
     if (
@@ -136,6 +145,27 @@ export default function DashboardPage() {
             <strong>{refuses}</strong>
           </div>
         </section>
+
+        <div className="dashboard-assignment-card">
+  <div>
+    <p className="assignment-label">Affectation actuelle</p>
+    <h2>
+      {assignment?.service?.company?.nom || '-'}
+    </h2>
+    <p className="assignment-service">
+      {assignment?.service?.nom || '-'}
+    </p>
+  </div>
+
+  <div className="assignment-responsable">
+    <span>Responsable</span>
+    <strong>
+  {assignment?.responsableService
+    ? `${assignment.responsableService.prenom} ${assignment.responsableService.nom}`
+    : '-'}
+</strong>
+  </div>
+</div>
 
         <section className="dashboard-panel cra-panel">
           <div className="panel-header">

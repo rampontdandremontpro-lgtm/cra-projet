@@ -83,9 +83,10 @@ export default function Sidebar() {
 
         <span>{roleLabels[user?.role] || user?.role}</span>
 
-        <button type="button" onClick={handleLogout}>
-          Déconnexion
-        </button>
+        <button type="button" className="sidebar-logout-btn" onClick={handleLogout}>
+  <span className="sidebar-logout-icon">⏻</span>
+  <span>Déconnexion</span>
+</button>
       </div>
     </aside>
   );

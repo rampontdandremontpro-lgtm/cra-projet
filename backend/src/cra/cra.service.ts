@@ -686,7 +686,7 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
 
       const duree = Number(day.duree || 0);
 
-if (requireDuration && day.type === CraDayType.TRAVAIL && duree <= 0) {
+if (requireDuration && day.type !== CraDayType.CONGE && duree <= 0) {
   throw new BadRequestException(
     `La durée de la date ${day.date} doit être supérieure à 0`,
   );
@@ -886,11 +886,7 @@ if (requireDuration && day.type === CraDayType.TRAVAIL && duree <= 0) {
   duree?: number;
   activityEntries?: { duree: number }[];
 }): number {
-  if (
-    day.type === CraDayType.CONGE ||
-    day.type === CraDayType.ABSENCE ||
-    day.type === CraDayType.RTT
-  ) {
+  if (day.type === CraDayType.CONGE) {
     return 1;
   }
 
@@ -907,32 +903,40 @@ if (requireDuration && day.type === CraDayType.TRAVAIL && duree <= 0) {
 }
 
   private validateActivityEntriesRules(days: CreateCraDayDto[]): void {
-    for (const day of days) {
-      const entries = day.activityEntries || [];
+  for (const day of days) {
+    const entries = day.activityEntries || [];
 
-      const total = entries.reduce(
-        (sum, entry) => sum + Number(entry.duree || 0),
-        0,
+    const total = entries.reduce(
+      (sum, entry) => sum + Number(entry.duree || 0),
+      0,
+    );
+
+    if (day.type === CraDayType.CONGE && entries.length > 0) {
+      throw new BadRequestException(
+        `La date ${day.date} est en congé, les activités doivent être vides`,
       );
+    }
 
-      if (
-  (day.type === CraDayType.CONGE ||
-    day.type === CraDayType.ABSENCE ||
-    day.type === CraDayType.RTT) &&
-  entries.length > 0
-) {
-  throw new BadRequestException(
-    `La date ${day.date} est en ${day.type}, les activités doivent être vides`,
-  );
-}
+    if (day.type === CraDayType.TRAVAIL && total > 1) {
+      throw new BadRequestException(
+        `Le total des activités du ${day.date} ne peut pas dépasser 1 jour`,
+      );
+    }
 
-      if (day.type === CraDayType.TRAVAIL && total > 1) {
-        throw new BadRequestException(
-          `Le total des activités du ${day.date} ne peut pas dépasser 1 jour`,
-        );
-      }
+    if (
+      (day.type === CraDayType.ABSENCE ||
+        day.type === CraDayType.RTT ||
+        day.type === CraDayType.ARRET_MALADIE) &&
+      total !== 0 &&
+      total !== 0.5 &&
+      total !== 1
+    ) {
+      throw new BadRequestException(
+        `La durée du ${day.date} doit être vide, égale à 0.5 ou égale à 1 jour`,
+      );
     }
   }
+}
 
   private async saveActivityColumnsAndEntries(
     cra: Cra,
