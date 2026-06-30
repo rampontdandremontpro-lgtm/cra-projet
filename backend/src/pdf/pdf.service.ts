@@ -9,8 +9,8 @@ export class PdfService {
     return new Promise((resolve) => {
       const doc = new PDFDocument({
         size: 'A4',
-        layout: 'landscape',
-        margin: 35,
+        layout: 'portrait',
+        margin: 26,
         bufferPages: true,
       });
 
@@ -31,10 +31,10 @@ export class PdfService {
 
       const pageWidth = doc.page.width;
       const pageHeight = doc.page.height;
-      const margin = 35;
+      const margin = 26;
       const contentWidth = pageWidth - margin * 2;
-      const footerHeight = 55;
-      const maxY = pageHeight - footerHeight - 25;
+      const footerHeight = 38;
+      const maxY = pageHeight - footerHeight - 18;
 
       const months = [
         '',
@@ -64,11 +64,7 @@ export class PdfService {
 
       const toIsoDate = (date?: string | Date | null): string => {
         if (!date) return '';
-
-        if (typeof date === 'string') {
-          return date.split('T')[0];
-        }
-
+        if (typeof date === 'string') return date.split('T')[0];
         return date.toISOString().split('T')[0];
       };
 
@@ -88,12 +84,23 @@ export class PdfService {
 
       const formatNumber = (value: number): string => {
         const numericValue = Number(value || 0);
-
-        if (Number.isInteger(numericValue)) {
-          return String(numericValue);
-        }
-
+        if (Number.isInteger(numericValue)) return String(numericValue);
         return numericValue.toFixed(1);
+      };
+
+      const normalizeText = (value: string) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '');
+
+      const getSpecialTypeFromColumnName = (name: string): string | null => {
+        const normalizedName = normalizeText(name);
+        if (normalizedName === 'absence') return 'ABSENCE';
+        if (normalizedName === 'rtt') return 'RTT';
+        if (normalizedName === 'arret maladie') return 'ARRET_MALADIE';
+        return null;
       };
 
       const getActivityColumns = () => {
@@ -101,11 +108,16 @@ export class PdfService {
 
         const normalized = [...columns]
           .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
-          .map((column, index) => ({
-            id: column.id,
-            nom: column.nom || `Activité ${index + 1}`,
-            orderIndex: column.orderIndex ?? index,
-          }));
+          .map((column, index) => {
+            const name = column.nom || `Activité ${index + 1}`;
+
+            return {
+              id: column.id,
+              nom: name,
+              orderIndex: column.orderIndex ?? index,
+              specialType: getSpecialTypeFromColumnName(name),
+            };
+          });
 
         if (normalized.length === 0) {
           return [
@@ -113,6 +125,7 @@ export class PdfService {
               id: 'legacy-activity',
               nom: 'Activité',
               orderIndex: 0,
+              specialType: null,
             },
           ];
         }
@@ -148,22 +161,36 @@ export class PdfService {
         return Number(entry?.duree || 0);
       };
 
+      const isSpecialType = (type?: string | null): boolean =>
+        ['ABSENCE', 'RTT', 'ARRET_MALADIE'].includes(type || '');
+
+      const getColumnValue = (jour: any, column: any): number => {
+        if (!jour || !column) return 0;
+
+        const entryValue = getEntryValue(jour, column.id);
+        if (entryValue > 0) return entryValue;
+
+        if (
+          column.specialType &&
+          jour.type === column.specialType &&
+          Number(jour.duree || 0) > 0
+        ) {
+          return Number(jour.duree || 0);
+        }
+
+        return 0;
+      };
+
       const getDayTotal = (jour: any): number => {
         if (!jour) return 0;
-
-        if (jour.type === 'CONGE' || jour.type === 'ABSENCE') {
-          return 1;
-        }
+        if (jour.type === 'CONGE') return 1;
 
         const entriesTotal = getDayEntries(jour).reduce(
           (sum: number, entry: any) => sum + Number(entry.duree || 0),
           0,
         );
 
-        if (entriesTotal > 0) {
-          return Number(entriesTotal.toFixed(1));
-        }
-
+        if (entriesTotal > 0) return Number(entriesTotal.toFixed(1));
         return Number(jour.duree || 0);
       };
 
@@ -179,13 +206,16 @@ export class PdfService {
           )}-${String(dayNumber).padStart(2, '0')}`;
           const savedDay = daysByDate.get(isoDate);
           const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+          const isHoliday = !savedDay && !isWeekend;
 
           rows.push({
             date: isoDate,
             dayName: dayNames[date.getDay()],
             savedDay,
             disabled: !savedDay,
-            disabledLabel: isWeekend ? 'Week-end' : 'Non saisissable',
+            isWeekend,
+            isHoliday,
+            disabledLabel: isWeekend ? 'Week-end' : 'Jour férié',
           });
         }
 
@@ -223,10 +253,11 @@ export class PdfService {
       const totalTravail = totalByType('TRAVAIL');
       const totalConges = totalByType('CONGE');
       const totalAbsences = totalByType('ABSENCE');
+      const totalArretsMaladie = totalByType('ARRET_MALADIE');
       const totalRtt = totalByType('RTT');
 
-      const getActivityTotal = (columnId: number | string) =>
-        jours.reduce((total, jour) => total + getEntryValue(jour, columnId), 0);
+      const getActivityTotal = (column: any) =>
+        jours.reduce((total, jour) => total + getColumnValue(jour, column), 0);
 
       const getGrandTotal = () =>
         jours.reduce((total, jour) => total + getDayTotal(jour), 0);
@@ -238,50 +269,52 @@ export class PdfService {
         );
 
         if (fs.existsSync(logoPath)) {
-          doc.image(logoPath, margin, 15, {
-            width: 70,
-          });
+          doc.image(logoPath, margin, 12, { width: 48 });
         } else {
           doc
             .fillColor(BLUE)
-            .fontSize(24)
+            .fontSize(18)
             .font('Helvetica-Bold')
-            .text('GMES', margin, 25);
+            .text('GMES', margin, 22);
         }
 
         doc
           .fillColor(DARK_BLUE)
-          .fontSize(9)
+          .fontSize(8)
           .font('Helvetica-Bold')
-          .text('DOCUMENT INTERNE', pageWidth - 200, 25, {
-            width: 160,
+          .text('DOCUMENT INTERNE', pageWidth - margin - 150, 18, {
+            width: 150,
             align: 'right',
             lineBreak: false,
           });
 
         doc
           .fillColor(ORANGE)
-          .fontSize(10)
+          .fontSize(8)
           .font('Helvetica-Bold')
-          .text(`Référence : ${reference}`, pageWidth - 220, 45, {
-            width: 180,
+          .text(`Référence : ${reference}`, pageWidth - margin - 170, 36, {
+            width: 170,
             align: 'right',
             lineBreak: false,
           });
 
-        doc.rect(0, 88, pageWidth * 0.45, 3).fill(BLUE);
-        doc.rect(pageWidth * 0.45, 88, pageWidth * 0.3, 3).fill(ORANGE);
-        doc.rect(pageWidth * 0.75, 88, pageWidth * 0.25, 3).fill(BLUE);
+        const lineY = 64;
+        doc.rect(margin, lineY, contentWidth * 0.45, 2).fill(BLUE);
+        doc.rect(margin + contentWidth * 0.45, lineY, contentWidth * 0.3, 2).fill(ORANGE);
+        doc.rect(margin + contentWidth * 0.75, lineY, contentWidth * 0.25, 2).fill(BLUE);
       };
 
       const drawSectionTitle = (title: string, y: number) => {
-        doc.rect(margin, y, 4, 14).fill(ORANGE);
+        doc.rect(margin, y + 1, 3, 12).fill(ORANGE);
 
         doc
           .fillColor(DARK_BLUE)
-          .fontSize(12)
+          .fontSize(10)
           .font('Helvetica-Bold')
-          .text(title, margin + 12, y - 1);
+          .text(title, margin + 10, y, {
+            width: contentWidth - 10,
+            lineBreak: false,
+          });
       };
 
       const drawInfoBox = (
@@ -292,48 +325,67 @@ export class PdfService {
         value: string,
       ) => {
         doc
-          .roundedRect(x, y, width, 50, 6)
+          .roundedRect(x, y, width, 40, 5)
           .strokeColor(BORDER)
-          .lineWidth(1)
+          .lineWidth(0.8)
           .stroke();
 
         doc
           .fillColor('#5D6D7E')
-          .fontSize(8)
+          .fontSize(6.5)
           .font('Helvetica-Bold')
-          .text(title.toUpperCase(), x + 15, y + 11);
+          .text(title.toUpperCase(), x + 10, y + 8, {
+            width: width - 20,
+            lineBreak: false,
+          });
 
         doc
           .fillColor(DARK_BLUE)
-          .fontSize(10)
+          .fontSize(8)
           .font('Helvetica-Bold')
-          .text(value, x + 15, y + 28, {
-            width: width - 25,
-            lineBreak: false,
+          .text(value, x + 10, y + 22, {
+            width: width - 20,
+            height: 15,
+            ellipsis: true,
           });
       };
 
       const addNewPage = () => {
         doc.addPage();
         drawHeader();
-
-        return 115;
+        return 84;
       };
 
       const ensureSpace = (currentY: number, neededHeight: number) => {
-        if (currentY + neededHeight > maxY) {
-          return addNewPage();
-        }
-
+        if (currentY + neededHeight > maxY) return addNewPage();
         return currentY;
       };
 
-      const getColumnWidths = () => {
+      const getActivityColumnGroups = () => {
+        const fixedWidth = 48 + 46 + 56 + 34;
+        const minActivityWidth = 42;
+        const maxColumnsPerTable = Math.max(
+          1,
+          Math.floor((contentWidth - fixedWidth) / minActivityWidth),
+        );
+
+        const groups: any[][] = [];
+
+        for (let i = 0; i < activityColumns.length; i += maxColumnsPerTable) {
+          groups.push(activityColumns.slice(i, i + maxColumnsPerTable));
+        }
+
+        return groups;
+      };
+
+      const activityColumnGroups = getActivityColumnGroups();
+
+      const getColumnWidths = (columns: any[]) => {
         const fixedWidths = {
-          date: 58,
-          day: 65,
-          type: 72,
-          total: 48,
+          date: 48,
+          day: 46,
+          type: 56,
+          total: 34,
         };
 
         const activityWidth =
@@ -342,15 +394,13 @@ export class PdfService {
             fixedWidths.day -
             fixedWidths.type -
             fixedWidths.total) /
-          activityColumns.length;
+          Math.max(columns.length, 1);
 
         return {
           ...fixedWidths,
           activity: activityWidth,
         };
       };
-
-      const colWidths = getColumnWidths();
 
       const drawCellText = (
         text: string,
@@ -367,11 +417,11 @@ export class PdfService {
       ) => {
         doc
           .fillColor(options?.color || TEXT)
-          .fontSize(options?.size || 7)
+          .fontSize(options?.size || 5.8)
           .font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .text(text, x + 4, y + 6, {
-            width: width - 8,
-            height: height - 8,
+          .text(text, x + 2, y + 4, {
+            width: width - 4,
+            height: height - 5,
             align: options?.align || 'left',
             ellipsis: true,
           });
@@ -382,7 +432,7 @@ export class PdfService {
         height: number,
         positions: number[],
       ) => {
-        doc.strokeColor(BORDER).lineWidth(0.5);
+        doc.strokeColor(BORDER).lineWidth(0.4);
 
         positions.forEach((x) => {
           doc.moveTo(x, y).lineTo(x, y + height).stroke();
@@ -390,18 +440,10 @@ export class PdfService {
       };
 
       const getTypeStyle = (type: string) => {
-        if (type === 'CONGE') {
-          return { color: GREEN, bg: '#EAFBF0', label: 'CONGÉ' };
-        }
-
-        if (type === 'ABSENCE') {
-          return { color: RED, bg: '#FFF0F0', label: 'ABSENCE' };
-        }
-
-        if (type === 'RTT') {
-          return { color: PURPLE, bg: '#F5F3FF', label: 'RTT' };
-        }
-
+        if (type === 'CONGE') return { color: GREEN, bg: '#EAFBF0', label: 'CONGÉ' };
+        if (type === 'ABSENCE') return { color: RED, bg: '#FFF0F0', label: 'ABSENCE' };
+        if (type === 'ARRET_MALADIE') return { color: RED, bg: '#FFF0F0', label: 'ARRÊT MAL.' };
+        if (type === 'RTT') return { color: PURPLE, bg: '#F5F3FF', label: 'RTT' };
         return { color: BLUE, bg: '#EAF4FF', label: 'TRAVAIL' };
       };
 
@@ -413,30 +455,32 @@ export class PdfService {
         y: number,
         width: number,
       ) => {
-        doc.roundedRect(x + 5, y + 5, width - 10, 14, 3).fill(bg);
+        doc.roundedRect(x + 4, y + 4, width - 8, 10, 2).fill(bg);
 
         doc
           .fillColor(color)
-          .fontSize(6)
+          .fontSize(4.8)
           .font('Helvetica-Bold')
-          .text(label, x + 7, y + 9, {
-            width: width - 14,
+          .text(label, x + 5, y + 7, {
+            width: width - 10,
             align: 'center',
             lineBreak: false,
           });
       };
 
-      const drawDynamicTableHeader = (y: number) => {
-        const headerHeight = 32;
+      const drawDynamicTableHeader = (y: number, columns: any[]) => {
+        const headerHeight = 22;
+        const colWidths = getColumnWidths(columns);
         let x = margin;
         const linePositions: number[] = [];
 
-        doc.roundedRect(margin, y, contentWidth, headerHeight, 4).fill(BLUE);
+        doc.roundedRect(margin, y, contentWidth, headerHeight, 3).fill(BLUE);
 
         drawCellText('DATE', x, y, colWidths.date, headerHeight, {
           color: '#FFFFFF',
           bold: true,
           align: 'center',
+          size: 5.6,
         });
         x += colWidths.date;
         linePositions.push(x);
@@ -445,6 +489,7 @@ export class PdfService {
           color: '#FFFFFF',
           bold: true,
           align: 'center',
+          size: 5.6,
         });
         x += colWidths.day;
         linePositions.push(x);
@@ -453,15 +498,17 @@ export class PdfService {
           color: '#FFFFFF',
           bold: true,
           align: 'center',
+          size: 5.6,
         });
         x += colWidths.type;
         linePositions.push(x);
 
-        activityColumns.forEach((column) => {
+        columns.forEach((column) => {
           drawCellText(column.nom || 'Activité', x, y, colWidths.activity, headerHeight, {
             color: '#FFFFFF',
             bold: true,
             align: 'center',
+            size: columns.length > 7 ? 4.8 : 5.2,
           });
           x += colWidths.activity;
           linePositions.push(x);
@@ -471,6 +518,7 @@ export class PdfService {
           color: '#FFFFFF',
           bold: true,
           align: 'center',
+          size: 5.2,
         });
 
         drawVerticalLines(y, headerHeight, linePositions);
@@ -479,19 +527,26 @@ export class PdfService {
       };
 
       const getRowBackground = (row: any, index: number) => {
+        if (row.isHoliday) return '#FFF7ED';
         if (row.disabled) return '#F1F5F9';
 
         const type = row.savedDay?.type;
 
         if (type === 'CONGE') return '#ECFDF5';
-        if (type === 'ABSENCE') return '#FFF1F2';
+        if (type === 'ABSENCE' || type === 'ARRET_MALADIE') return '#FFF1F2';
         if (type === 'RTT') return '#F5F3FF';
 
         return index % 2 === 0 ? '#FFFFFF' : GREY;
       };
 
-      const drawDynamicRow = (row: any, index: number, y: number) => {
-        const rowHeight = 24;
+      const drawDynamicRow = (
+        row: any,
+        index: number,
+        y: number,
+        columns: any[],
+      ) => {
+        const rowHeight = 18;
+        const colWidths = getColumnWidths(columns);
         let x = margin;
         const linePositions: number[] = [];
         const bg = getRowBackground(row, index);
@@ -501,6 +556,7 @@ export class PdfService {
         drawCellText(formatDate(row.date), x, y, colWidths.date, rowHeight, {
           align: 'center',
           color: row.disabled ? '#94A3B8' : TEXT,
+          size: 5.3,
         });
         x += colWidths.date;
         linePositions.push(x);
@@ -508,6 +564,7 @@ export class PdfService {
         drawCellText(row.dayName, x, y, colWidths.day, rowHeight, {
           align: 'center',
           color: row.disabled ? '#94A3B8' : TEXT,
+          size: 5.2,
         });
         x += colWidths.day;
         linePositions.push(x);
@@ -515,9 +572,9 @@ export class PdfService {
         if (row.disabled) {
           drawCellText(row.disabledLabel, x, y, colWidths.type, rowHeight, {
             align: 'center',
-            color: '#64748B',
+            color: row.isHoliday ? ORANGE : '#64748B',
             bold: true,
-            size: 6,
+            size: 5,
           });
         } else {
           const typeStyle = getTypeStyle(row.savedDay?.type);
@@ -527,25 +584,39 @@ export class PdfService {
         x += colWidths.type;
         linePositions.push(x);
 
-        activityColumns.forEach((column, columnIndex) => {
+        columns.forEach((column) => {
           let value = '';
+          let valueColor = TEXT;
+          let valueSize = 5.5;
+          let isBold = false;
 
-          if (!row.disabled && row.savedDay?.type === 'ABSENCE' && columnIndex === 0) {
-            value = row.savedDay?.commentaire || '';
-          } else if (
-            !row.disabled &&
-            row.savedDay?.type !== 'ABSENCE' &&
-            row.savedDay?.type !== 'CONGE'
-          ) {
-            const entryValue = getEntryValue(row.savedDay, column.id);
-            value = entryValue > 0 ? formatNumber(entryValue) : '';
+          if (!row.disabled && row.savedDay?.type !== 'CONGE') {
+            const entryValue = getColumnValue(row.savedDay, column);
+
+            if (column.specialType) {
+              if (row.savedDay?.type === column.specialType && entryValue > 0) {
+                if (column.specialType === 'ABSENCE') {
+                  const reason = row.savedDay?.commentaire || 'Absence';
+                  value = `${reason} / ${formatNumber(entryValue)}`;
+                  valueSize = 4.6;
+                } else {
+                  value = formatNumber(entryValue);
+                }
+
+                valueColor = column.specialType === 'RTT' ? PURPLE : RED;
+                isBold = true;
+              }
+            } else if (!isSpecialType(column.specialType)) {
+              value = entryValue > 0 ? formatNumber(entryValue) : '';
+              isBold = entryValue > 0;
+            }
           }
 
           drawCellText(value, x, y, colWidths.activity, rowHeight, {
             align: 'center',
-            color: row.savedDay?.type === 'ABSENCE' ? RED : TEXT,
-            bold: row.savedDay?.type === 'ABSENCE' || Number(value) > 0,
-            size: row.savedDay?.type === 'ABSENCE' ? 6 : 7,
+            color: valueColor,
+            bold: isBold,
+            size: valueSize,
           });
 
           x += colWidths.activity;
@@ -558,6 +629,7 @@ export class PdfService {
           align: 'center',
           bold: true,
           color: row.disabled ? '#94A3B8' : TEXT,
+          size: 5.7,
         });
 
         drawVerticalLines(y, rowHeight, linePositions);
@@ -565,8 +637,9 @@ export class PdfService {
         return y + rowHeight;
       };
 
-      const drawDynamicTotalsRow = (y: number) => {
-        const rowHeight = 26;
+      const drawDynamicTotalsRow = (y: number, columns: any[]) => {
+        const rowHeight = 20;
+        const colWidths = getColumnWidths(columns);
         let x = margin;
         const labelWidth = colWidths.date + colWidths.day + colWidths.type;
         const linePositions: number[] = [];
@@ -577,16 +650,17 @@ export class PdfService {
           align: 'center',
           bold: true,
           color: '#64748B',
-          size: 7,
+          size: 5.5,
         });
 
         x += labelWidth;
         linePositions.push(x);
 
-        activityColumns.forEach((column) => {
-          drawCellText(formatNumber(getActivityTotal(column.id)), x, y, colWidths.activity, rowHeight, {
+        columns.forEach((column) => {
+          drawCellText(formatNumber(getActivityTotal(column)), x, y, colWidths.activity, rowHeight, {
             align: 'center',
             bold: true,
+            size: 5.7,
           });
           x += colWidths.activity;
           linePositions.push(x);
@@ -595,11 +669,61 @@ export class PdfService {
         drawCellText(formatNumber(getGrandTotal()), x, y, colWidths.total, rowHeight, {
           align: 'center',
           bold: true,
+          size: 5.7,
         });
 
         drawVerticalLines(y, rowHeight, linePositions);
 
         return y + rowHeight;
+      };
+
+      const drawActivityTableGroup = (
+        y: number,
+        columns: any[],
+        groupIndex: number,
+        groupCount: number,
+      ) => {
+        if (groupIndex > 0) {
+          y = ensureSpace(y, 40);
+          drawSectionTitle(
+            `DÉTAIL DES ACTIVITÉS - COLONNES ${groupIndex + 1}/${groupCount}`,
+            y,
+          );
+          y += 18;
+        }
+
+        y = drawDynamicTableHeader(y, columns);
+
+        monthRows.forEach((row, index) => {
+          if (y + 18 > maxY) {
+            y = addNewPage();
+            drawSectionTitle(
+              groupCount > 1
+                ? `DÉTAIL DES ACTIVITÉS - COLONNES ${groupIndex + 1}/${groupCount}`
+                : 'DÉTAIL DES ACTIVITÉS - SUITE',
+              y,
+            );
+            y += 18;
+            y = drawDynamicTableHeader(y, columns);
+          }
+
+          y = drawDynamicRow(row, index, y, columns);
+        });
+
+        if (y + 20 > maxY) {
+          y = addNewPage();
+          drawSectionTitle(
+            groupCount > 1
+              ? `DÉTAIL DES ACTIVITÉS - COLONNES ${groupIndex + 1}/${groupCount}`
+              : 'DÉTAIL DES ACTIVITÉS - SUITE',
+            y,
+          );
+          y += 18;
+          y = drawDynamicTableHeader(y, columns);
+        }
+
+        y = drawDynamicTotalsRow(y, columns);
+        return y + 16;
       };
 
       const drawSummaryCard = (
@@ -611,34 +735,32 @@ export class PdfService {
         color: string,
         bg: string,
       ) => {
-        doc.roundedRect(x, y, width, 50, 6).fillAndStroke(bg, BORDER);
+        doc.roundedRect(x, y, width, 42, 5).fillAndStroke(bg, BORDER);
 
         doc
           .fillColor(color)
-          .fontSize(20)
+          .fontSize(16)
           .font('Helvetica-Bold')
-          .text(formatNumber(value), x, y + 10, {
+          .text(formatNumber(value), x, y + 7, {
             width,
             align: 'center',
           });
 
         doc
           .fillColor('#34495E')
-          .fontSize(8)
-          .font('Helvetica')
-          .text(label.toUpperCase(), x, y + 34, {
-            width,
+          .fontSize(6.5)
+          .font('Helvetica-Bold')
+          .text(label.toUpperCase(), x + 4, y + 27, {
+            width: width - 8,
             align: 'center',
+            height: 12,
+            ellipsis: true,
           });
       };
 
       const getClientValidationStatus = () => {
         if (cra.statut === 'SOUMIS_CLIENT') {
-          return {
-            label: 'SOUMIS_CLIENT',
-            color: ORANGE,
-            bg: '#FFF3E0',
-          };
+          return { label: 'SOUMIS_CLIENT', color: ORANGE, bg: '#FFF3E0' };
         }
 
         if (
@@ -647,50 +769,26 @@ export class PdfService {
           cra.statut === 'REFUSE_ADMIN' ||
           cra.statut === 'ARCHIVE'
         ) {
-          return {
-            label: 'VALIDE_CLIENT',
-            color: GREEN,
-            bg: '#EAFBF0',
-          };
+          return { label: 'VALIDE_CLIENT', color: GREEN, bg: '#EAFBF0' };
         }
 
         if (cra.statut === 'REFUSE_CLIENT') {
-          return {
-            label: 'REFUSE_CLIENT',
-            color: RED,
-            bg: '#FFF0F0',
-          };
+          return { label: 'REFUSE_CLIENT', color: RED, bg: '#FFF0F0' };
         }
 
-        return {
-          label: '-',
-          color: '#5D6D7E',
-          bg: '#FFFFFF',
-        };
+        return { label: '-', color: '#5D6D7E', bg: '#FFFFFF' };
       };
 
       const getAdminValidationStatus = () => {
         if (cra.statut === 'VALIDE_ADMIN' || cra.statut === 'ARCHIVE') {
-          return {
-            label: 'VALIDE_ADMIN',
-            color: GREEN,
-            bg: '#EAFBF0',
-          };
+          return { label: 'VALIDE_ADMIN', color: GREEN, bg: '#EAFBF0' };
         }
 
         if (cra.statut === 'REFUSE_ADMIN') {
-          return {
-            label: 'REFUSE_ADMIN',
-            color: RED,
-            bg: '#FFF0F0',
-          };
+          return { label: 'REFUSE_ADMIN', color: RED, bg: '#FFF0F0' };
         }
 
-        return {
-          label: '-',
-          color: '#5D6D7E',
-          bg: '#FFFFFF',
-        };
+        return { label: '-', color: '#5D6D7E', bg: '#FFFFFF' };
       };
 
       const drawValidationBox = (
@@ -701,99 +799,87 @@ export class PdfService {
         status: { label: string; color: string; bg: string },
         date?: string | Date | null,
       ) => {
-        doc.roundedRect(x, y, width, 50, 6).fillAndStroke('#FFFFFF', BORDER);
+        doc.roundedRect(x, y, width, 42, 5).fillAndStroke('#FFFFFF', BORDER);
 
         doc
           .fillColor('#5D6D7E')
-          .fontSize(8)
+          .fontSize(6.5)
           .font('Helvetica-Bold')
-          .text(title.toUpperCase(), x + 15, y + 9, {
-            width: width - 30,
+          .text(title.toUpperCase(), x + 10, y + 7, {
+            width: width - 20,
             lineBreak: false,
           });
 
-        doc.roundedRect(x + 15, y + 25, 120, 16, 5).fill(status.bg);
+        doc.roundedRect(x + 10, y + 22, 88, 13, 4).fill(status.bg);
 
         doc
           .fillColor(status.color)
-          .fontSize(8)
+          .fontSize(6)
           .font('Helvetica-Bold')
-          .text(status.label, x + 22, y + 29, {
-            width: 110,
+          .text(status.label, x + 14, y + 26, {
+            width: 80,
             lineBreak: false,
           });
 
         doc
           .fillColor(DARK_BLUE)
-          .fontSize(8)
+          .fontSize(6.5)
           .font('Helvetica-Bold')
-          .text(formatDate(date), x + 145, y + 29, {
-            width: width - 155,
+          .text(formatDate(date), x + 105, y + 26, {
+            width: width - 112,
+            align: 'right',
             lineBreak: false,
           });
       };
 
       drawHeader();
 
-      let y = 115;
+      let y = 84;
 
       doc
         .fillColor(DARK_BLUE)
-        .fontSize(21)
+        .fontSize(17)
         .font('Helvetica-Bold')
-        .text("COMPTE-RENDU D'ACTIVITÉ", margin, y);
+        .text("COMPTE-RENDU D'ACTIVITÉ", margin, y, {
+          lineBreak: false,
+        });
 
-      y += 28;
+      y += 23;
 
       doc
         .fillColor('#5D6D7E')
-        .fontSize(10)
+        .fontSize(8.5)
         .font('Helvetica')
-        .text(`Période : ${periode}`, margin, y);
-
-      y += 25;
-
-      const boxWidth = contentWidth / 3;
-
-      drawInfoBox(margin, y, boxWidth, 'Collaborateur', collaborateur);
-      drawInfoBox(margin + boxWidth, y, boxWidth, 'Entreprise', entreprise);
-      drawInfoBox(margin + boxWidth * 2, y, boxWidth, 'Service', service);
-
-      y += 72;
-
-      drawSectionTitle('DÉTAIL DES ACTIVITÉS', y);
-      y += 25;
-
-      y = drawDynamicTableHeader(y);
-
-      monthRows.forEach((row, index) => {
-        if (y + 24 > maxY) {
-          y = addNewPage();
-          drawSectionTitle('DÉTAIL DES ACTIVITÉS - SUITE', y);
-          y += 25;
-          y = drawDynamicTableHeader(y);
-        }
-
-        y = drawDynamicRow(row, index, y);
-      });
-
-      if (y + 26 > maxY) {
-        y = addNewPage();
-        drawSectionTitle('DÉTAIL DES ACTIVITÉS - SUITE', y);
-        y += 25;
-        y = drawDynamicTableHeader(y);
-      }
-
-      y = drawDynamicTotalsRow(y);
+        .text(`Période : ${periode}`, margin, y, {
+          lineBreak: false,
+        });
 
       y += 20;
-      y = ensureSpace(y, 200);
+
+      const infoGap = 6;
+      const boxWidth = (contentWidth - infoGap * 2) / 3;
+
+      drawInfoBox(margin, y, boxWidth, 'Collaborateur', collaborateur);
+      drawInfoBox(margin + boxWidth + infoGap, y, boxWidth, 'Entreprise', entreprise);
+      drawInfoBox(margin + (boxWidth + infoGap) * 2, y, boxWidth, 'Service', service);
+
+      y += 58;
+
+      drawSectionTitle('DÉTAIL DES ACTIVITÉS', y);
+      y += 18;
+
+      activityColumnGroups.forEach((columns, groupIndex) => {
+        y = drawActivityTableGroup(y, columns, groupIndex, activityColumnGroups.length);
+      });
+
+      y += 4;
+      y = ensureSpace(y, 165);
 
       drawSectionTitle('RÉCAPITULATIF DU MOIS', y);
-      y += 25;
+      y += 18;
 
-      const cardGap = 10;
-      const cardWidth = (contentWidth - cardGap * 3) / 4;
+      const cardGap = 6;
+      const cardWidth = (contentWidth - cardGap * 4) / 5;
 
       drawSummaryCard(
         margin,
@@ -829,18 +915,28 @@ export class PdfService {
         margin + (cardWidth + cardGap) * 3,
         y,
         cardWidth,
+        totalArretsMaladie,
+        'Arrêts maladie',
+        RED,
+        '#FFF0F0',
+      );
+
+      drawSummaryCard(
+        margin + (cardWidth + cardGap) * 4,
+        y,
+        cardWidth,
         totalRtt,
         'RTT',
         PURPLE,
         '#F5F3FF',
       );
 
-      y += 70;
+      y += 58;
 
       drawSectionTitle('STATUT & VALIDATION', y);
-      y += 25;
+      y += 18;
 
-      const validationBoxGap = 14;
+      const validationBoxGap = 10;
       const validationBoxWidth = (contentWidth - validationBoxGap) / 2;
 
       const clientStatus = getClientValidationStatus();
@@ -870,109 +966,121 @@ export class PdfService {
         adminValidationDate,
       );
 
-      y += 70;
-y = ensureSpace(y, 155);
+      y += 58;
+      y = ensureSpace(y, 125);
 
-drawSectionTitle('SIGNATURES', y);
-y += 25;
+      drawSectionTitle('SIGNATURES', y);
+      y += 18;
 
-const sigWidth = (contentWidth - 20) / 3;
-const sigHeight = 105;
+      const sigGap = 8;
+      const sigWidth = (contentWidth - sigGap * 2) / 3;
+      const sigHeight = 86;
 
-const drawSignature = (x: number, title: string, name: string) => {
-  doc.roundedRect(x, y, sigWidth, sigHeight, 4).strokeColor(BORDER).stroke();
+      const drawSignature = (x: number, title: string, name: string) => {
+        doc.roundedRect(x, y, sigWidth, sigHeight, 4).strokeColor(BORDER).stroke();
 
         doc
           .fillColor('#5D6D7E')
-          .fontSize(8)
+          .fontSize(6.5)
           .font('Helvetica-Bold')
-          .text(title.toUpperCase(), x + 10, y + 10, {
-            width: sigWidth - 20,
+          .text(title.toUpperCase(), x + 8, y + 8, {
+            width: sigWidth - 16,
             lineBreak: false,
           });
 
         doc
           .fillColor(DARK_BLUE)
-          .fontSize(9)
+          .fontSize(7.5)
           .font('Helvetica-Bold')
-          .text(name || '-', x + 10, y + 25, {
-            width: sigWidth - 20,
-            lineBreak: false,
+          .text(name || '-', x + 8, y + 22, {
+            width: sigWidth - 16,
+            height: 12,
+            ellipsis: true,
           });
 
         doc
-  .moveTo(x + 10, y + 78)
-  .lineTo(x + sigWidth - 10, y + 78)
-  .strokeColor(BLUE)
-  .stroke();
+          .moveTo(x + 8, y + 62)
+          .lineTo(x + sigWidth - 8, y + 62)
+          .strokeColor(BLUE)
+          .stroke();
 
         doc
-  .fillColor('#7F8C8D')
-  .fontSize(7)
-  .font('Helvetica')
-  .text('Signature & date', x + 10, y + 84, {
-    width: sigWidth - 20,
-    lineBreak: false,
-  });
+          .fillColor('#7F8C8D')
+          .fontSize(6)
+          .font('Helvetica')
+          .text('Signature & date', x + 8, y + 68, {
+            width: sigWidth - 16,
+            lineBreak: false,
+          });
       };
 
       drawSignature(margin, 'Collaborateur', collaborateur);
-      drawSignature(margin + sigWidth + 10, 'Responsable service', clientValidator);
+      drawSignature(margin + sigWidth + sigGap, 'Responsable service', clientValidator);
       drawSignature(
-        margin + (sigWidth + 10) * 2,
+        margin + (sigWidth + sigGap) * 2,
         'Administrateur',
         adminValidator,
       );
 
       const range = doc.bufferedPageRange();
 
-for (let i = 0; i < range.count; i++) {
-  doc.switchToPage(range.start + i);
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(range.start + i);
 
-  const footerY = pageHeight - 70;
-  const footerTextY = footerY + 22;
+        // IMPORTANT : ne pas placer le texte du footer trop près du bas.
+        // Sinon PDFKit crée des pages blanches avec uniquement les morceaux du footer.
+        const footerY = pageHeight - 48;
+        const footerTextY = footerY + 12;
+        const footerTextHeight = 10;
 
-  doc.save();
+        doc.save();
 
-  doc.rect(0, footerY, pageWidth, 70).fill(BLUE);
-  doc.rect(0, footerY - 3, pageWidth, 3).fill(ORANGE);
+        doc.rect(margin, footerY, contentWidth * 0.45, 1.5).fill(BLUE);
+        doc.rect(margin + contentWidth * 0.45, footerY, contentWidth * 0.3, 1.5).fill(ORANGE);
+        doc.rect(margin + contentWidth * 0.75, footerY, contentWidth * 0.25, 1.5).fill(BLUE);
 
-  doc
-    .fillColor('#FFFFFF')
-    .fontSize(7)
-    .font('Helvetica')
-    .text('GMES - Document confidentiel', margin, footerTextY, {
-      width: 190,
-      lineBreak: false,
-    });
+        doc
+          .fillColor('#334155')
+          .fontSize(6.5)
+          .font('Helvetica')
+          .text('GMES - Document confidentiel', margin, footerTextY, {
+            width: 165,
+            height: footerTextHeight,
+            lineBreak: false,
+            ellipsis: true,
+          });
 
-  doc
-    .fillColor('#FFFFFF')
-    .fontSize(7)
-    .font('Helvetica')
-    .text(`${reference} - Page ${i + 1}/${range.count}`, 230, footerTextY, {
-      width: 180,
-      align: 'center',
-      lineBreak: false,
-    });
+        doc
+          .fillColor('#334155')
+          .fontSize(6.5)
+          .font('Helvetica')
+          .text(`${reference} - Page ${i + 1}/${range.count}`, margin + 170, footerTextY, {
+            width: contentWidth - 340,
+            height: footerTextHeight,
+            align: 'center',
+            lineBreak: false,
+            ellipsis: true,
+          });
 
-  doc
-    .fillColor('#FFFFFF')
-    .fontSize(7)
-    .font('Helvetica')
-    .text(
-      `Généré le ${new Date().toLocaleDateString('fr-FR')}`,
-      pageWidth - 220,
-      footerTextY,
-      {
-        width: 180,
-        align: 'right',
-        lineBreak: false,
-      },
-    );
+        doc
+          .fillColor('#334155')
+          .fontSize(6.5)
+          .font('Helvetica')
+          .text(
+            `Généré le ${new Date().toLocaleDateString('fr-FR')}`,
+            pageWidth - margin - 165,
+            footerTextY,
+            {
+              width: 165,
+              height: footerTextHeight,
+              align: 'right',
+              lineBreak: false,
+              ellipsis: true,
+            },
+          );
 
-  doc.restore();
-}
+        doc.restore();
+      }
 
       doc.end();
     });

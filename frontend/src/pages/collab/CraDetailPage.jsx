@@ -15,13 +15,15 @@ import {
 import { getHolidaysByYear } from '../../services/holidayApi';
 
 import {
+  ABSENCES_COLUMN_ID,
   CRA_DAY_TYPES,
   MONTH_NAMES,
   buildCraPayloadFromTimesheet,
   generateRowsFromExistingCra,
   getDayTotal,
   getSummaryTotals,
-  isSpecialActivityColumn 
+  isAbsenceLikeType,
+  isSpecialActivityColumn,
 } from '../../utils/craTimesheetUtils';
 
 import '../../styles/dashboard.css';
@@ -206,24 +208,37 @@ function CraDetailPage() {
     return 'Chaque colonne d’activité doit avoir un nom avant la soumission.';
   }
 
+  const isHalfOrFullDuration = (value) => {
+    const numberValue = Number(value);
+    return numberValue === 0.5 || numberValue === 1;
+  };
+
   for (const row of rows) {
     if (row.disabled) continue;
 
     const total = getDayTotal(row);
 
-    if (row.type === CRA_DAY_TYPES.TRAVAIL && total <= 0) {
-      return `La durée du ${row.date} doit être supérieure à 0 avant la soumission.`;
+    if (total <= 0) {
+      return `Une durée est obligatoire pour le ${row.date}.`;
     }
 
     if (total > 1) {
       return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
     }
 
-    if (
-      row.type === CRA_DAY_TYPES.ABSENCE &&
-      !String(row.commentaire || '').trim()
-    ) {
-      return `Le motif d’absence est obligatoire pour le ${row.date}.`;
+    const absencesValue = Number(row.activities?.[ABSENCES_COLUMN_ID] || 0);
+
+    if (isAbsenceLikeType(row.type)) {
+      if (!isHalfOrFullDuration(absencesValue)) {
+        return `Pour le ${row.date}, la colonne Absences doit être à 0.5 ou 1.`;
+      }
+
+      if (
+        row.type === CRA_DAY_TYPES.ABSENCE &&
+        !String(row.commentaire || '').trim()
+      ) {
+        return `Le motif d’absence est obligatoire pour le ${row.date}.`;
+      }
     }
 
     for (const column of activityColumns) {
@@ -240,35 +255,23 @@ function CraDetailPage() {
       }
 
       if (isSpecialActivityColumn(column)) {
-        if (numberValue !== 0.5 && numberValue !== 1) {
-          return `Pour le ${row.date}, la durée ${column.nom} doit être égale à 0.5 ou 1 jour.`;
+        if (!isHalfOrFullDuration(numberValue)) {
+          return `Pour le ${row.date}, la durée Absences doit être à 0.5 ou 1.`;
         }
-      } else if (numberValue < 0.1 || numberValue > 1) {
-        return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
+
+        continue;
       }
-    }
 
-    if (
-      [
-        CRA_DAY_TYPES.ABSENCE,
-        CRA_DAY_TYPES.RTT,
-        CRA_DAY_TYPES.ARRET_MALADIE,
-      ].includes(row.type)
-    ) {
-      const hasSpecialDuration = activityColumns.some((column) => {
-        if (column.specialType !== row.type) return false;
+      if (row.type === CRA_DAY_TYPES.TRAVAIL) {
+        if (numberValue < 0.1 || numberValue > 1) {
+          return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
+        }
+      }
 
-        return Number(row.activities?.[column.id] || 0) > 0;
-      });
-
-      if (!hasSpecialDuration) {
-        const typeLabels = {
-  ABSENCE: 'Absence',
-  RTT: 'RTT',
-  ARRET_MALADIE: 'Arrêt maladie',
-};
-
-return `La durée du ${row.date} est obligatoire pour ${typeLabels[row.type]}.`;
+      if (isAbsenceLikeType(row.type)) {
+        if (!isHalfOrFullDuration(numberValue)) {
+          return `Pour le ${row.date}, une activité associée à une absence doit être à 0.5 ou 1.`;
+        }
       }
     }
   }

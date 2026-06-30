@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
+  ABSENCES_COLUMN_ID,
   CRA_DAY_TYPES,
   CRA_DAY_TYPE_LABELS,
   formatDateFr,
   getColumnTotal,
   getDayTotal,
+  isAbsenceLikeType,
   isSpecialActivityColumn,
   syncSpecialActivityColumns,
 } from '../../utils/craTimesheetUtils';
@@ -29,6 +31,21 @@ function CraTimesheetTable({
     width: 0,
   });
 
+  const WORK_DURATION_OPTIONS = [
+    '0.1',
+    '0.2',
+    '0.3',
+    '0.4',
+    '0.5',
+    '0.6',
+    '0.7',
+    '0.8',
+    '0.9',
+    '1',
+  ];
+
+  const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
+
   useEffect(() => {
     const tableScroll = tableScrollRef.current;
     const floatingScroll = floatingScrollRef.current;
@@ -45,6 +62,7 @@ function CraTimesheetTable({
 
       animationFrameId = requestAnimationFrame(() => {
         const rect = tableScroll.getBoundingClientRect();
+
         const hasHorizontalScroll =
           tableScroll.scrollWidth > tableScroll.clientWidth + 5;
 
@@ -96,50 +114,38 @@ function CraTimesheetTable({
     };
   }, [activityColumns.length, rows.length]);
 
-  const isSpecialType = (type) => {
-    return (
-      type === CRA_DAY_TYPES.ABSENCE ||
-      type === CRA_DAY_TYPES.RTT ||
-      type === CRA_DAY_TYPES.ARRET_MALADIE
-    );
-  };
-
-  const WORK_DURATION_OPTIONS = [
-  '0.1',
-  '0.2',
-  '0.3',
-  '0.4',
-  '0.5',
-  '0.6',
-  '0.7',
-  '0.8',
-  '0.9',
-  '1',
-];
-
-const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
-
   const syncColumnsAndRows = (nextRows) => {
-    const syncedColumns = syncSpecialActivityColumns(
-      activityColumns,
-      nextRows,
-    );
+  const syncedColumns = syncSpecialActivityColumns(
+    activityColumns,
+    nextRows,
+  );
 
-    setActivityColumns(syncedColumns);
+  setActivityColumns(syncedColumns);
 
-    return nextRows.map((row) => {
-      const nextActivities = {};
+  return nextRows.map((row) => {
+    const nextActivities = {};
 
-      syncedColumns.forEach((column) => {
-        nextActivities[column.id] = row.activities?.[column.id] ?? '';
-      });
+    syncedColumns.forEach((column) => {
+      if (column.id === ABSENCES_COLUMN_ID) {
+        nextActivities[column.id] =
+          row.activities?.[ABSENCES_COLUMN_ID] ||
+          row.activities?.['special-absence'] ||
+          row.activities?.['special-rtt'] ||
+          row.activities?.['special-arret-maladie'] ||
+          '';
 
-      return {
-        ...row,
-        activities: nextActivities,
-      };
+        return;
+      }
+
+      nextActivities[column.id] = row.activities?.[column.id] ?? '';
     });
-  };
+
+    return {
+      ...row,
+      activities: nextActivities,
+    };
+  });
+};
 
   const updateActivityColumnName = (columnId, value) => {
     setActivityColumns((previousColumns) =>
@@ -200,10 +206,7 @@ const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
           type: value,
           commentaire:
             value === CRA_DAY_TYPES.ABSENCE ? row.commentaire : '',
-          activities:
-            value === CRA_DAY_TYPES.TRAVAIL
-              ? row.activities
-              : nextActivities,
+          activities: nextActivities,
         };
       });
 
@@ -246,20 +249,25 @@ const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
 
     if (row.disabled) classes.push('timesheet-row-disabled');
     if (row.isHoliday) classes.push('timesheet-row-holiday');
-    if (row.type === CRA_DAY_TYPES.CONGE) classes.push('timesheet-row-conge');
-    if (row.type === CRA_DAY_TYPES.ABSENCE) classes.push('timesheet-row-absence');
-    if (row.type === CRA_DAY_TYPES.ARRET_MALADIE) {
+
+    if (row.type === CRA_DAY_TYPES.CONGE) {
+      classes.push('timesheet-row-conge');
+    }
+
+    if (
+      row.type === CRA_DAY_TYPES.ABSENCE ||
+      row.type === CRA_DAY_TYPES.ARRET_MALADIE
+    ) {
       classes.push('timesheet-row-absence');
     }
-    if (row.type === CRA_DAY_TYPES.RTT) classes.push('timesheet-row-rtt');
+
+    if (row.type === CRA_DAY_TYPES.RTT) {
+      classes.push('timesheet-row-rtt');
+    }
 
     const total = getDayTotal(row);
 
-    if (row.type === CRA_DAY_TYPES.TRAVAIL && total > 1) {
-      classes.push('timesheet-row-error');
-    }
-
-    if (isSpecialType(row.type) && total > 1) {
+    if (!row.disabled && total > 1) {
       classes.push('timesheet-row-error');
     }
 
@@ -269,26 +277,79 @@ const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
   const getDisabledReason = (row) => {
     if (row.isHoliday) return 'Jour férié';
     if (row.isWeekend) return 'Week-end';
-    if (row.isBeforeAssignment || row.isAfterAssignment) return 'Hors affectation';
+    if (row.isBeforeAssignment || row.isAfterAssignment) {
+      return 'Hors affectation';
+    }
+
     return 'Non saisissable';
   };
 
   const isActivityInputDisabled = (row, column) => {
-  if (readOnly || row.disabled) return true;
+    if (readOnly || row.disabled) return true;
 
-  if (row.type === CRA_DAY_TYPES.CONGE) return true;
+    if (isSpecialActivityColumn(column)) {
+      return !isAbsenceLikeType(row.type);
+    }
 
-  if (isSpecialActivityColumn(column)) {
-    return row.type !== column.specialType;
-  }
+    return ![
+      CRA_DAY_TYPES.TRAVAIL,
+      CRA_DAY_TYPES.CONGE,
+      CRA_DAY_TYPES.ABSENCE,
+      CRA_DAY_TYPES.RTT,
+      CRA_DAY_TYPES.ARRET_MALADIE,
+    ].includes(row.type);
+  };
 
-  return ![
-    CRA_DAY_TYPES.TRAVAIL,
-    CRA_DAY_TYPES.ABSENCE,
-    CRA_DAY_TYPES.RTT,
-    CRA_DAY_TYPES.ARRET_MALADIE,
-  ].includes(row.type);
-};
+  const renderAbsencesCell = (row, rowIndex, column) => {
+    if (!isAbsenceLikeType(row.type)) {
+      return <span className="timesheet-empty-cell"></span>;
+    }
+
+    if (row.type === CRA_DAY_TYPES.ABSENCE) {
+      return (
+        <div className="timesheet-special-cell">
+          <input
+            type="text"
+            value={row.commentaire || ''}
+            disabled={readOnly}
+            onChange={(event) =>
+              updateRowCommentaire(rowIndex, event.target.value)
+            }
+            placeholder="Motif"
+            className="timesheet-special-reason-input"
+          />
+
+          <select
+            value={row.activities?.[column.id] || ''}
+            disabled={readOnly}
+            onChange={(event) =>
+              updateActivityValue(rowIndex, column.id, event.target.value)
+            }
+            className="timesheet-special-duration-select"
+          >
+            <option value="">Durée</option>
+            <option value="0.5">0.5</option>
+            <option value="1">1</option>
+          </select>
+        </div>
+      );
+    }
+
+    return (
+      <select
+        value={row.activities?.[column.id] || ''}
+        disabled={readOnly}
+        onChange={(event) =>
+          updateActivityValue(rowIndex, column.id, event.target.value)
+        }
+        className="timesheet-special-duration-select"
+      >
+        <option value="">Durée</option>
+        <option value="0.5">0.5</option>
+        <option value="1">1</option>
+      </select>
+    );
+  };
 
   const renderActivityCell = (row, rowIndex, column) => {
     if (row.disabled) {
@@ -296,90 +357,44 @@ const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
     }
 
     if (isSpecialActivityColumn(column)) {
-      if (row.type !== column.specialType) {
-        return <span className="timesheet-empty-cell"></span>;
-      }
-
-      if (column.specialType === CRA_DAY_TYPES.ABSENCE) {
-        return (
-          <div className="timesheet-special-cell">
-            <input
-              type="text"
-              value={row.commentaire || ''}
-              disabled={readOnly}
-              onChange={(event) =>
-                updateRowCommentaire(rowIndex, event.target.value)
-              }
-              placeholder="Motif"
-              className="timesheet-special-reason-input"
-            />
-
-            <select
-              value={row.activities?.[column.id] || ''}
-              disabled={readOnly}
-              onChange={(event) =>
-                updateActivityValue(rowIndex, column.id, event.target.value)
-              }
-              className="timesheet-special-duration-select"
-            >
-              <option value="">Durée</option>
-              <option value="0.5">0.5</option>
-              <option value="1">1</option>
-            </select>
-          </div>
-        );
-      }
-
-      return (
-        <select
-          value={row.activities?.[column.id] || ''}
-          disabled={readOnly}
-          onChange={(event) =>
-            updateActivityValue(rowIndex, column.id, event.target.value)
-          }
-          className="timesheet-special-duration-select"
-        >
-          <option value="">Durée</option>
-          <option value="0.5">0.5</option>
-          <option value="1">1</option>
-        </select>
-      );
+      return renderAbsencesCell(row, rowIndex, column);
     }
 
     if (
-  ![
-    CRA_DAY_TYPES.TRAVAIL,
-    CRA_DAY_TYPES.ABSENCE,
-    CRA_DAY_TYPES.RTT,
-    CRA_DAY_TYPES.ARRET_MALADIE,
-  ].includes(row.type)
-) {
-  return <span className="timesheet-empty-cell"></span>;
-}
+      ![
+        CRA_DAY_TYPES.TRAVAIL,
+        CRA_DAY_TYPES.CONGE,
+        CRA_DAY_TYPES.ABSENCE,
+        CRA_DAY_TYPES.RTT,
+        CRA_DAY_TYPES.ARRET_MALADIE,
+      ].includes(row.type)
+    ) {
+      return <span className="timesheet-empty-cell"></span>;
+    }
 
     const durationOptions =
-  row.type === CRA_DAY_TYPES.TRAVAIL
-    ? WORK_DURATION_OPTIONS
-    : SPECIAL_DURATION_OPTIONS;
+      row.type === CRA_DAY_TYPES.TRAVAIL
+        ? WORK_DURATION_OPTIONS
+        : SPECIAL_DURATION_OPTIONS;
 
-return (
-  <select
-    value={row.activities?.[column.id] || ''}
-    disabled={isActivityInputDisabled(row, column)}
-    onChange={(event) =>
-      updateActivityValue(rowIndex, column.id, event.target.value)
-    }
-    className="timesheet-duration-select"
-  >
-    <option value="">0</option>
+    return (
+      <select
+        value={row.activities?.[column.id] || ''}
+        disabled={isActivityInputDisabled(row, column)}
+        onChange={(event) =>
+          updateActivityValue(rowIndex, column.id, event.target.value)
+        }
+        className="timesheet-duration-select"
+      >
+        <option value="">0</option>
 
-    {durationOptions.map((duration) => (
-      <option key={duration} value={duration}>
-        {duration}
-      </option>
-    ))}
-  </select>
-);
+        {durationOptions.map((duration) => (
+          <option key={duration} value={duration}>
+            {duration}
+          </option>
+        ))}
+      </select>
+    );
   };
 
   return (
@@ -457,7 +472,7 @@ return (
                         {getDisabledReason(row)}
                       </span>
                     ) : readOnly ? (
-                      <span>{CRA_DAY_TYPE_LABELS[row.type]}</span>
+                      <span>{CRA_DAY_TYPE_LABELS[row.type] || row.type}</span>
                     ) : (
                       <select
                         className={`type-select type-${row.type.toLowerCase()}`}

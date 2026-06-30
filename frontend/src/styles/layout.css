@@ -152,7 +152,7 @@
   background: transparent;
   color: #020617;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1.35;
   padding: 0;
@@ -163,7 +163,7 @@
 }
 
 .cra-info-grid textarea.cra-readonly-textarea {
-  margin-top: 0;
+  margin-top: 8.2px;
 }
 
 .cra-info-grid textarea.cra-readonly-textarea:disabled {

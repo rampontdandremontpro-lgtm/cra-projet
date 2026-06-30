@@ -8,6 +8,7 @@ import { createCra, submitCra } from '../../services/craApi';
 import { getHolidaysByYear } from '../../services/holidayApi';
 import Sidebar from '../../components/layout/Sidebar';
 import {
+  ABSENCES_COLUMN_ID,
   CRA_DAY_TYPES,
   MONTH_NAMES,
   buildCraPayloadFromTimesheet,
@@ -15,7 +16,8 @@ import {
   generateMonthRows,
   getDayTotal,
   getSummaryTotals,
-  isSpecialActivityColumn 
+  isAbsenceLikeType,
+  isSpecialActivityColumn,
 } from '../../utils/craTimesheetUtils';
 
 import '../../styles/dashboard.css';
@@ -163,22 +165,42 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
 };
 
   const validateTimesheet = () => {
-    const cleanColumns = activityColumns.map((column) => ({
-      ...column,
-      nom: column.nom.trim(),
-    }));
+  const cleanColumns = activityColumns.map((column) => ({
+    ...column,
+    nom: column.nom.trim(),
+  }));
 
-    if (cleanColumns.some((column) => !column.nom)) {
-      return 'Chaque colonne d’activité doit avoir un nom.';
+  const emptyManualColumn = cleanColumns.find(
+    (column) => !isSpecialActivityColumn(column) && !column.nom,
+  );
+
+  if (emptyManualColumn) {
+    return 'Chaque colonne d’activité doit avoir un nom.';
+  }
+
+  const isHalfOrFullDuration = (value) => {
+    const numberValue = Number(value);
+    return numberValue === 0.5 || numberValue === 1;
+  };
+
+  for (const row of rows) {
+    if (row.disabled) continue;
+
+    const total = getDayTotal(row);
+
+    if (total <= 0) {
+      return `Une durée est obligatoire pour le ${row.date}.`;
     }
 
-    for (const row of rows) {
-      if (row.disabled) continue;
+    if (total > 1) {
+      return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
+    }
 
-      const total = getDayTotal(row);
+    const absencesValue = Number(row.activities?.[ABSENCES_COLUMN_ID] || 0);
 
-      if (row.type === CRA_DAY_TYPES.TRAVAIL && total > 1) {
-        return `Le total du ${row.date} ne peut pas dépasser 1 jour.`;
+    if (isAbsenceLikeType(row.type)) {
+      if (!isHalfOrFullDuration(absencesValue)) {
+        return `Pour le ${row.date}, la colonne Absences doit être à 0.5 ou 1.`;
       }
 
       if (
@@ -187,26 +209,43 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
       ) {
         return `Le motif d’absence est obligatoire pour le ${row.date}.`;
       }
+    }
 
-      for (const value of Object.values(row.activities || {})) {
-        if (value === '' || value === null || value === undefined) continue;
+    for (const column of activityColumns) {
+      const value = row.activities?.[column.id];
 
-        const numberValue = Number(value);
+      if (value === '' || value === null || value === undefined) continue;
 
-        if (Number.isNaN(numberValue)) {
-          return `Une durée saisie le ${row.date} est invalide.`;
+      const numberValue = Number(value);
+
+      if (Number.isNaN(numberValue)) {
+        return `Une durée saisie le ${row.date} est invalide.`;
+      }
+
+      if (isSpecialActivityColumn(column)) {
+        if (!isHalfOrFullDuration(numberValue)) {
+          return `Pour le ${row.date}, la durée Absences doit être à 0.5 ou 1.`;
         }
 
-        if (row.type === CRA_DAY_TYPES.TRAVAIL) {
-          if (numberValue < 0.1 || numberValue > 1) {
-            return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
-          }
+        continue;
+      }
+
+      if (row.type === CRA_DAY_TYPES.TRAVAIL) {
+        if (numberValue < 0.1 || numberValue > 1) {
+          return `Pour le ${row.date}, une activité doit être entre 0.1 et 1 jour.`;
+        }
+      }
+
+      if (isAbsenceLikeType(row.type)) {
+        if (!isHalfOrFullDuration(numberValue)) {
+          return `Pour le ${row.date}, une activité associée à une absence doit être à 0.5 ou 1.`;
         }
       }
     }
+  }
 
-    return '';
-  };
+  return '';
+};
 
   const buildPayload = () => {
     return buildCraPayloadFromTimesheet({
