@@ -686,17 +686,17 @@ this.validateCraDaysWithAssignment(cra.days, activeAssignment);
 
       const duree = Number(day.duree || 0);
 
-if (requireDuration && day.type !== CraDayType.CONGE && duree <= 0) {
+if (requireDuration && duree <= 0) {
   throw new BadRequestException(
     `La durée de la date ${day.date} doit être supérieure à 0`,
   );
 }
 
-      if (Number(day.duree) > 1) {
-        throw new BadRequestException(
-          `La durée de la date ${day.date} ne peut pas dépasser 1 jour`,
-        );
-      }
+if (duree > 1) {
+  throw new BadRequestException(
+    `La durée de la date ${day.date} ne peut pas dépasser 1 jour`,
+  );
+}
     }
   }
 
@@ -886,10 +886,6 @@ if (requireDuration && day.type !== CraDayType.CONGE && duree <= 0) {
   duree?: number;
   activityEntries?: { duree: number }[];
 }): number {
-  if (day.type === CraDayType.CONGE) {
-    return 1;
-  }
-
   const activityTotal = (day.activityEntries || []).reduce(
     (total, entry) => total + Number(entry.duree || 0),
     0,
@@ -903,6 +899,23 @@ if (requireDuration && day.type !== CraDayType.CONGE && duree <= 0) {
 }
 
   private validateActivityEntriesRules(days: CreateCraDayDto[]): void {
+  const isHalfOrFullDuration = (value: number): boolean => {
+    return value === 0.5 || value === 1;
+  };
+
+  const isWorkDuration = (value: number): boolean => {
+    return value >= 0.1 && value <= 1;
+  };
+
+  const isAbsenceLikeType = (type: CraDayType): boolean => {
+    return (
+      type === CraDayType.CONGE ||
+      type === CraDayType.ABSENCE ||
+      type === CraDayType.RTT ||
+      type === CraDayType.ARRET_MALADIE
+    );
+  };
+
   for (const day of days) {
     const entries = day.activityEntries || [];
 
@@ -911,29 +924,41 @@ if (requireDuration && day.type !== CraDayType.CONGE && duree <= 0) {
       0,
     );
 
-    if (day.type === CraDayType.CONGE && entries.length > 0) {
-      throw new BadRequestException(
-        `La date ${day.date} est en congé, les activités doivent être vides`,
-      );
-    }
-
-    if (day.type === CraDayType.TRAVAIL && total > 1) {
+    if (total > 1) {
       throw new BadRequestException(
         `Le total des activités du ${day.date} ne peut pas dépasser 1 jour`,
       );
     }
 
     if (
-      (day.type === CraDayType.ABSENCE ||
-        day.type === CraDayType.RTT ||
-        day.type === CraDayType.ARRET_MALADIE) &&
-      total !== 0 &&
-      total !== 0.5 &&
-      total !== 1
+      day.type === CraDayType.ABSENCE &&
+      !String(day.commentaire || '').trim()
     ) {
       throw new BadRequestException(
-        `La durée du ${day.date} doit être vide, égale à 0.5 ou égale à 1 jour`,
+        `Le motif d’absence est obligatoire pour la date ${day.date}`,
       );
+    }
+
+    for (const entry of entries) {
+      const duree = Number(entry.duree || 0);
+
+      if (duree <= 0) {
+        throw new BadRequestException(
+          `Une durée du ${day.date} est invalide`,
+        );
+      }
+
+      if (day.type === CraDayType.TRAVAIL && !isWorkDuration(duree)) {
+        throw new BadRequestException(
+          `Pour le ${day.date}, une activité doit être comprise entre 0.1 et 1 jour`,
+        );
+      }
+
+      if (isAbsenceLikeType(day.type) && !isHalfOrFullDuration(duree)) {
+        throw new BadRequestException(
+          `Pour le ${day.date}, une durée liée à une absence doit être égale à 0.5 ou 1 jour`,
+        );
+      }
     }
   }
 }

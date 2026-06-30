@@ -95,34 +95,91 @@ export class PdfService {
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '');
 
-      const getSpecialTypeFromColumnName = (name: string): string | null => {
+      const ABSENCES_COLUMN_ID = 'pdf-absences';
+      const ABSENCES_SPECIAL_TYPE = 'ABSENCES';
+
+      const isAbsenceLikeType = (type?: string | null): boolean =>
+        ['CONGE', 'ABSENCE', 'RTT', 'ARRET_MALADIE'].includes(type || '');
+
+      const isAbsencesColumnName = (name: string): boolean => {
         const normalizedName = normalizeText(name);
-        if (normalizedName === 'absence') return 'ABSENCE';
-        if (normalizedName === 'rtt') return 'RTT';
-        if (normalizedName === 'arret maladie') return 'ARRET_MALADIE';
-        return null;
+        return [
+          'absence',
+          'absences',
+          'conge',
+          'conges',
+          'rtt',
+          'arret maladie',
+          'arrets maladie',
+        ].includes(normalizedName);
+      };
+
+      const getSpecialTypeFromColumnName = (name: string): string | null => {
+        return isAbsencesColumnName(name) ? ABSENCES_SPECIAL_TYPE : null;
       };
 
       const getActivityColumns = () => {
         const columns = cra.activityColumns || cra.activity_columns || [];
+        const sortedColumns = [...columns].sort(
+          (a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0),
+        );
 
-        const normalized = [...columns]
-          .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
-          .map((column, index) => {
-            const name = column.nom || `Activité ${index + 1}`;
+        let absencesColumn: any = null;
+        const normalColumns: any[] = [];
 
-            return {
-              id: column.id,
-              nom: name,
-              orderIndex: column.orderIndex ?? index,
-              specialType: getSpecialTypeFromColumnName(name),
-            };
+        sortedColumns.forEach((column, index) => {
+          const name = column.nom || `Activité ${index + 1}`;
+          const specialType = getSpecialTypeFromColumnName(name);
+
+          if (specialType === ABSENCES_SPECIAL_TYPE) {
+            if (!absencesColumn) {
+              absencesColumn = {
+                id: ABSENCES_COLUMN_ID,
+                backendIds: [column.id],
+                nom: 'Absences',
+                orderIndex: -30,
+                specialType: ABSENCES_SPECIAL_TYPE,
+              };
+            } else {
+              absencesColumn.backendIds.push(column.id);
+            }
+
+            return;
+          }
+
+          normalColumns.push({
+            id: column.id,
+            backendIds: [column.id],
+            nom: name,
+            orderIndex: column.orderIndex ?? index,
+            specialType: null,
           });
+        });
+
+        const needsAbsencesColumn = jours.some((jour) =>
+          isAbsenceLikeType(jour.type),
+        );
+
+        const normalized = [
+          ...(needsAbsencesColumn
+            ? [
+                absencesColumn || {
+                  id: ABSENCES_COLUMN_ID,
+                  backendIds: [],
+                  nom: 'Absences',
+                  orderIndex: -30,
+                  specialType: ABSENCES_SPECIAL_TYPE,
+                },
+              ]
+            : []),
+          ...normalColumns,
+        ];
 
         if (normalized.length === 0) {
           return [
             {
               id: 'legacy-activity',
+              backendIds: ['legacy-activity'],
               nom: 'Activité',
               orderIndex: 0,
               specialType: null,
@@ -133,11 +190,11 @@ export class PdfService {
         return normalized;
       };
 
-      const activityColumns = getActivityColumns();
-
       const jours = [...(cra.days || cra.jours || [])].sort((a, b) =>
         String(a.date).localeCompare(String(b.date)),
       );
+
+      const activityColumns = getActivityColumns();
 
       const daysByDate = new Map(
         jours.map((jour) => [toIsoDate(jour.date), jour]),
@@ -161,18 +218,31 @@ export class PdfService {
         return Number(entry?.duree || 0);
       };
 
+      const getEntryValueForColumn = (jour: any, column: any): number => {
+        const backendIds = column.backendIds || [column.id];
+
+        return getDayEntries(jour).reduce((sum: number, entry: any) => {
+          const entryColumnId = String(getEntryColumnId(entry));
+          const isMatchingColumn =
+            String(column.id) === entryColumnId ||
+            backendIds.map(String).includes(entryColumnId);
+
+          return isMatchingColumn ? sum + Number(entry.duree || 0) : sum;
+        }, 0);
+      };
+
       const isSpecialType = (type?: string | null): boolean =>
-        ['ABSENCE', 'RTT', 'ARRET_MALADIE'].includes(type || '');
+        type === ABSENCES_SPECIAL_TYPE;
 
       const getColumnValue = (jour: any, column: any): number => {
         if (!jour || !column) return 0;
 
-        const entryValue = getEntryValue(jour, column.id);
-        if (entryValue > 0) return entryValue;
+        const entryValue = getEntryValueForColumn(jour, column);
+        if (entryValue > 0) return Number(entryValue.toFixed(1));
 
         if (
-          column.specialType &&
-          jour.type === column.specialType &&
+          column.specialType === ABSENCES_SPECIAL_TYPE &&
+          isAbsenceLikeType(jour.type) &&
           Number(jour.duree || 0) > 0
         ) {
           return Number(jour.duree || 0);
@@ -183,7 +253,6 @@ export class PdfService {
 
       const getDayTotal = (jour: any): number => {
         if (!jour) return 0;
-        if (jour.type === 'CONGE') return 1;
 
         const entriesTotal = getDayEntries(jour).reduce(
           (sum: number, entry: any) => sum + Number(entry.duree || 0),
@@ -245,12 +314,32 @@ export class PdfService {
         ? `${cra.adminValidator.prenom ?? ''} ${cra.adminValidator.nom ?? ''}`.trim()
         : '-';
 
+      const getAbsencesColumn = () =>
+        activityColumns.find(
+          (column) => column.specialType === ABSENCES_SPECIAL_TYPE,
+        );
+
+      const getAbsenceValue = (jour: any): number => {
+        const absencesColumn = getAbsencesColumn();
+        if (!absencesColumn || !isAbsenceLikeType(jour?.type)) return 0;
+        return getColumnValue(jour, absencesColumn);
+      };
+
+      const getWorkValue = (jour: any): number => {
+        const total = getDayTotal(jour);
+        const absenceValue = getAbsenceValue(jour);
+        return Number(Math.max(0, total - absenceValue).toFixed(1));
+      };
+
       const totalByType = (type: string) =>
         jours
           .filter((jour) => jour.type === type)
-          .reduce((total, jour) => total + getDayTotal(jour), 0);
+          .reduce((total, jour) => total + getAbsenceValue(jour), 0);
 
-      const totalTravail = totalByType('TRAVAIL');
+      const totalTravail = jours.reduce(
+        (total, jour) => total + getWorkValue(jour),
+        0,
+      );
       const totalConges = totalByType('CONGE');
       const totalAbsences = totalByType('ABSENCE');
       const totalArretsMaladie = totalByType('ARRET_MALADIE');
@@ -590,12 +679,12 @@ export class PdfService {
           let valueSize = 5.5;
           let isBold = false;
 
-          if (!row.disabled && row.savedDay?.type !== 'CONGE') {
+          if (!row.disabled) {
             const entryValue = getColumnValue(row.savedDay, column);
 
-            if (column.specialType) {
-              if (row.savedDay?.type === column.specialType && entryValue > 0) {
-                if (column.specialType === 'ABSENCE') {
+            if (column.specialType === ABSENCES_SPECIAL_TYPE) {
+              if (isAbsenceLikeType(row.savedDay?.type) && entryValue > 0) {
+                if (row.savedDay?.type === 'ABSENCE') {
                   const reason = row.savedDay?.commentaire || 'Absence';
                   value = `${reason} / ${formatNumber(entryValue)}`;
                   valueSize = 4.6;
@@ -603,7 +692,14 @@ export class PdfService {
                   value = formatNumber(entryValue);
                 }
 
-                valueColor = column.specialType === 'RTT' ? PURPLE : RED;
+                if (row.savedDay?.type === 'RTT') {
+                  valueColor = PURPLE;
+                } else if (row.savedDay?.type === 'CONGE') {
+                  valueColor = GREEN;
+                } else {
+                  valueColor = RED;
+                }
+
                 isBold = true;
               }
             } else if (!isSpecialType(column.specialType)) {
