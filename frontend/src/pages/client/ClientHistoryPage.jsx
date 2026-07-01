@@ -299,7 +299,8 @@ export default function ClientHistoryPage() {
           ) : filteredCras.length === 0 ? (
             <p className="empty-text">Aucun CRA trouvé dans l’historique.</p>
           ) : (
-            <table className="cra-dashboard-table">
+            <div className="table-responsive">
+            <table className="cra-dashboard-table client-history-table">
               <thead>
                 <tr>
                   <th>Collaborateur</th>
@@ -361,6 +362,7 @@ export default function ClientHistoryPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </main>

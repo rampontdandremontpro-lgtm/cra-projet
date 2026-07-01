@@ -604,7 +604,7 @@ function CraDetailPage() {
                         onClick={handleSaveAndSubmit}
                         disabled={saving}
                       >
-                        {saving ? 'Soumission...' : 'Enregistrer et soumettre'}
+                        {saving ? 'Soumission...' : 'Enregistrer et Soumettre'}
                       </button>
                     </>
                   )}

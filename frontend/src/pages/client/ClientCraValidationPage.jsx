@@ -115,7 +115,8 @@ export default function ClientCraValidationPage() {
           ) : crasToValidate.length === 0 ? (
             <p className="empty-text">Aucun CRA à valider pour le moment.</p>
           ) : (
-            <table className="cra-dashboard-table">
+            <div className="table-responsive">
+            <table className="cra-dashboard-table client-validation-table">
               <thead>
                 <tr>
                   <th>Collaborateur</th>
@@ -174,6 +175,7 @@ export default function ClientCraValidationPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </main>

@@ -139,14 +139,6 @@ export default function ClientDashboardPage() {
                 <p>{cras.length} compte-rendu(s)</p>
               </div>
             </div>
-
-            <button
-              type="button"
-              className="see-all-btn"
-              onClick={() => navigate('/client/cra-a-valider')}
-            >
-              Voir les CRA →
-            </button>
           </div>
 
           {error && <div className="cra-error">{error}</div>}
@@ -158,7 +150,8 @@ export default function ClientDashboardPage() {
               Aucun CRA trouvé pour votre service.
             </p>
           ) : (
-            <table className="cra-dashboard-table">
+            <div className="table-responsive">
+            <table className="cra-dashboard-table client-dashboard-table">
               <thead>
                 <tr>
                   <th>Collaborateur</th>
@@ -188,40 +181,49 @@ export default function ClientDashboardPage() {
                     <tr key={cra.id}>
                       <td>{getCollaboratorName(cra)}</td>
 
-                      <td>
-                        <div className="month-cell">
-                          <span className="month-icon">📅</span>
-                          {getMonthName(cra.mois)}
-                        </div>
-                      </td>
+                     <td className="table-month-cell">
+  <div className="month-cell">
+    <span className="month-icon">📅</span>
+    {getMonthName(cra.mois)}
+  </div>
+</td>
 
                       <td>{cra.annee}</td>
 
-                      <td>
-                        <span
-                          className={`status-badge status-${cra.statut.toLowerCase()}`}
-                        >
-                          {getStatusLabel(cra.statut)}
-                        </span>
-                      </td>
+                     <td className="table-status-cell">
+  <span
+    className={`status-badge status-${cra.statut.toLowerCase()}`}
+  >
+    {getStatusLabel(cra.statut)}
+  </span>
+</td>
 
-                      <td>{getSubmissionDate(cra)}</td>
+                      <td className="table-date-cell">{getSubmissionDate(cra)}</td>
 
-                      <td>
-                        <div className="actions-cell">
-                          <button
-                            type="button"
-                            className="view-btn"
-                            onClick={() => handleDownloadPdf(cra)}
-                          >
-                            👁 PDF
-                          </button>
-                        </div>
-                      </td>
+                      <td className="table-actions-cell">
+  <div className="actions-cell">
+    <button
+      type="button"
+      className="view-btn compact-action-btn"
+      onClick={() => handleDownloadPdf(cra)}
+    >
+      👁 PDF
+    </button>
+
+    <button
+      type="button"
+      className="edit-btn compact-action-btn"
+      onClick={() => navigate(`/client/cra/${cra.id}`)}
+    >
+      {cra.statut === 'SOUMIS_CLIENT' ? 'À valider' : 'Voir'}
+    </button>
+  </div>
+</td>
                     </tr>
                   ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </main>

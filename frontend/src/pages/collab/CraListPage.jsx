@@ -146,7 +146,8 @@ export default function CraListPage() {
           ) : cras.length === 0 ? (
             <p className="empty-text">Aucun CRA trouvé.</p>
           ) : (
-            <table className="cra-dashboard-table">
+            <div className="table-responsive">
+            <table className="cra-dashboard-table collab-list-table">
               <thead>
                 <tr>
                   <th>Mois</th>
@@ -228,6 +229,7 @@ export default function CraListPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </main>

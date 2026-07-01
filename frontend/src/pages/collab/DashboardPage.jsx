@@ -188,7 +188,8 @@ const loadCra = async () => {
           ) : cras.length === 0 ? (
             <p className="empty-text">Aucun CRA à afficher pour le moment.</p>
           ) : (
-            <table className="cra-dashboard-table">
+            <div className="table-responsive">
+            <table className="cra-dashboard-table collab-dashboard-table">
               <thead>
                 <tr>
                   <th>Mois</th>
@@ -251,6 +252,7 @@ const loadCra = async () => {
                   ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </main>

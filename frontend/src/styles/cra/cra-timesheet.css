@@ -19,7 +19,7 @@
 }
 
 .timesheet-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
@@ -51,14 +51,14 @@
   vertical-align: middle;
 }
 
-.timesheet-col-date,
-.timesheet-date-col {
-  width: 125px;
-}
-
 .timesheet-col-day,
 .timesheet-day-col {
-  width: 125px;
+  width: 80px;
+}
+
+.timesheet-col-date,
+.timesheet-date-col {
+  width: 90px;
 }
 
 .timesheet-col-type,
@@ -515,3 +515,24 @@
   font-weight: 800;
   line-height: 1.35;
 }
+
+.timesheet-table th.timesheet-day-col,
+.timesheet-table th.timesheet-date-col,
+.timesheet-table th.timesheet-type-col,
+.timesheet-day-cell,
+.timesheet-date-cell,
+.timesheet-type-cell {
+  text-align: center;
+}
+
+.timesheet-type-cell {
+  display: table-cell;
+  vertical-align: middle;
+}
+
+.timesheet-type-cell .type-select,
+.timesheet-type-cell .timesheet-disabled-label,
+.timesheet-type-cell .timesheet-readonly-type {
+  margin: 0 auto;
+}
+

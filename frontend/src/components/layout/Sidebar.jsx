@@ -46,19 +46,22 @@ export default function Sidebar() {
 
   const menuItems = menuByRole[user?.role] || [];
 
+  const sidebarRoleClass = user?.role
+  ? `sidebar-${user.role.toLowerCase()}`
+  : 'sidebar-default';
+
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${sidebarRoleClass}`}>
       <div className="sidebar-logo">
         <div className="sidebar-icon">📄</div>
 
         <div>
-          <h2>CRA Manager</h2>
-          <p>Gestion CRA</p>
+          <h2>Gestion CRA</h2>
         </div>
       </div>
 
