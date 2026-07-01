@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
+import { useAuth } from '../../context/AuthContext';
 import { downloadCraPdf, getCraForClient } from '../../services/craApi';
 
 import '../../styles/dashboard.css';
@@ -9,6 +10,10 @@ import '../../styles/cra.css';
 
 export default function ClientDashboardPage() {
   const navigate = useNavigate();
+
+  const { user } = useAuth();
+
+const userDisplayName = `${user?.prenom || ''} ${user?.nom || ''}`.trim();
 
   const [cras, setCras] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +108,15 @@ export default function ClientDashboardPage() {
         <header className="dashboard-header">
           <div>
             <h1>Tableau de bord client</h1>
-            <p>Bienvenue dans votre espace de validation des CRA.</p>
+            <div className="dashboard-welcome-block">
+  <p className="dashboard-user-name">
+    Bonjour {userDisplayName}
+  </p>
+
+  <p className="dashboard-welcome-text">
+    Bienvenue dans votre espace de validation des CRA.
+  </p>
+</div>
           </div>
         </header>
 
@@ -132,7 +145,7 @@ export default function ClientDashboardPage() {
         <section className="dashboard-panel cra-panel">
           <div className="panel-header">
             <div className="panel-title">
-              <span className="panel-icon">✅</span>
+              <span className="panel-icon">📄</span>
 
               <div>
                 <h2>Derniers CRA du service</h2>
@@ -207,7 +220,7 @@ export default function ClientDashboardPage() {
       className="view-btn compact-action-btn"
       onClick={() => handleDownloadPdf(cra)}
     >
-      👁 PDF
+      PDF
     </button>
 
     <button

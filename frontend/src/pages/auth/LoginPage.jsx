@@ -56,14 +56,14 @@ export default function LoginPage() {
           <div className="auth-logo-icon">📄</div>
 
           <div>
-            <h1>CRA Manager</h1>
-            <p>Gestion des Comptes-Rendus d’Activité</p>
+            <h1>Gestion CRA</h1>
+            <p>Comptes-Rendus d’Activité</p>
           </div>
         </div>
 
         <div className="auth-header">
           <h2>Connexion</h2>
-          <p>Connectez-vous pour accéder à votre espace CRA.</p>
+          <p>Accédez à votre espace CRA.</p>
         </div>
 
         {error && <div className="auth-error">{error}</div>}

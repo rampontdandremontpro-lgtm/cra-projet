@@ -196,7 +196,7 @@ export default function CraListPage() {
                             className="view-btn"
                             onClick={() => handleViewCra(cra)}
                           >
-                            👁 PDF
+                            PDF
                           </button>
                         )}
 

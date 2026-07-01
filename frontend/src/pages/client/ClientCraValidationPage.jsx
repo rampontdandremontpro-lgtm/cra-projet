@@ -91,7 +91,6 @@ export default function ClientCraValidationPage() {
       <main className="dashboard-content">
         <div className="cra-list-header">
           <div>
-            <p className="breadcrumb">Espace client / Validation CRA</p>
             <h1>Validation des CRA</h1>
           </div>
         </div>
@@ -159,7 +158,7 @@ export default function ClientCraValidationPage() {
                           className="view-btn compact-action-btn"
                           onClick={() => handleDownloadPdf(cra)}
                         >
-                          👁 PDF
+                          PDF
                         </button>
 
                         <button

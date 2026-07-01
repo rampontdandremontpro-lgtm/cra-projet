@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import Sidebar from '../../components/layout/Sidebar';
+import { useAuth } from '../../context/AuthContext';
 import { downloadCraPdf, getMyCra } from '../../services/craApi';
 import { getMyActiveAssignment } from '../../services/collaboratorAssignmentApi';
 
@@ -9,6 +10,10 @@ import '../../styles/dashboard.css';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+
+  const { user } = useAuth();
+
+const userDisplayName = `${user?.prenom || ''} ${user?.nom || ''}`.trim();
 
   const [cras, setCras] = useState([]);
   const [loadingCra, setLoadingCra] = useState(true);
@@ -112,6 +117,48 @@ const loadCra = async () => {
     return cra.created_at || cra.createdAt || null;
   };
 
+  const getCompanyLogo = (companyName) => {
+  if (!companyName) return null;
+
+  const normalizedCompanyName = companyName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (normalizedCompanyName.includes('gfa')) {
+    return '/company-logos/gfa_logo.png';
+  }
+
+  if (normalizedCompanyName.includes('edf')) {
+    return '/company-logos/edf_logo.png';
+  }
+
+  if (
+    normalizedCompanyName.includes('fort') ||
+    normalizedCompanyName.includes('fdf') ||
+    normalizedCompanyName.includes('ville')
+  ) {
+    return '/company-logos/fdf_logo.jpg';
+  }
+
+  if (
+    normalizedCompanyName.includes('maritime') ||
+    normalizedCompanyName.includes('hub') ||
+    normalizedCompanyName.includes('port')
+  ) {
+    return '/company-logos/port-maritime_logo.png';
+  }
+
+  if (normalizedCompanyName.includes('sara')) {
+    return '/company-logos/sara_logo.png';
+  }
+
+  return null;
+};
+
+const companyName = assignment?.service?.company?.nom || '-';
+const companyLogo = getCompanyLogo(companyName);
+
   return (
     <div className="dashboard-page">
       <Sidebar />
@@ -120,7 +167,15 @@ const loadCra = async () => {
         <header className="dashboard-header">
           <div>
             <h1>Tableau de bord</h1>
-            <p>Bienvenue dans votre espace collaborateur.</p>
+            <div className="dashboard-welcome-block">
+  <p className="dashboard-user-name">
+    Bonjour {userDisplayName}
+  </p>
+
+  <p className="dashboard-welcome-text">
+    Bienvenue dans votre espace collaborateur.
+  </p>
+</div>
           </div>
         </header>
 
@@ -145,28 +200,36 @@ const loadCra = async () => {
             <strong>{refuses}</strong>
           </div>
         </section>
-
         <div className="dashboard-assignment-card">
-  <div>
+  <div className="assignment-company-info">
     <p className="assignment-label">Affectation actuelle</p>
-    <h2>
-      {assignment?.service?.company?.nom || '-'}
-    </h2>
+
+    <h2>{companyName}</h2>
+
     <p className="assignment-service">
       {assignment?.service?.nom || '-'}
     </p>
   </div>
 
+  {companyLogo && (
+    <div className="assignment-logo-box">
+      <img
+        src={companyLogo}
+        alt={`Logo ${companyName}`}
+        className="assignment-logo"
+      />
+    </div>
+  )}
+
   <div className="assignment-responsable">
     <span>Responsable</span>
     <strong>
-  {assignment?.responsableService
-    ? `${assignment.responsableService.prenom} ${assignment.responsableService.nom}`
-    : '-'}
-</strong>
+      {assignment?.responsableService
+        ? `${assignment.responsableService.prenom} ${assignment.responsableService.nom}`
+        : '-'}
+    </strong>
   </div>
 </div>
-
         <section className="dashboard-panel cra-panel">
           <div className="panel-header">
             <div className="panel-title">
@@ -236,18 +299,20 @@ const loadCra = async () => {
                       <td>{getSubmissionDate(cra)}</td>
 
                       <td>
-                        <button
-                          type="button"
-                          className="view-btn"
-                          onClick={() => handleViewCra(cra)}
-                        >
-                          {cra.statut === 'BROUILLON' ||
-                          cra.statut === 'REFUSE_CLIENT' ||
-                          cra.statut === 'REFUSE_ADMIN'
-                            ? '✏️ Modifier'
-                            : '👁 Voir le PDF'}
-                        </button>
-                      </td>
+  <div className="actions-cell">
+    <button
+      type="button"
+      className="view-btn"
+      onClick={() => handleViewCra(cra)}
+    >
+      {cra.statut === 'BROUILLON' ||
+      cra.statut === 'REFUSE_CLIENT' ||
+      cra.statut === 'REFUSE_ADMIN'
+        ? '✏️ Modifier'
+        : 'Voir le PDF'}
+    </button>
+  </div>
+</td>
                     </tr>
                   ))}
               </tbody>

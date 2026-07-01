@@ -264,8 +264,6 @@ setObservation(
       <main className="dashboard-content client-cra-detail">
         <div className="cra-page">
           <div className="cra-page-title">
-            <p className="breadcrumb">Espace client / Détail CRA</p>
-
             <h1>
               CRA — {getMonthName(cra.mois)} {cra.annee}
             </h1>

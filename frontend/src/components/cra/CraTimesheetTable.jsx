@@ -47,6 +47,42 @@ function CraTimesheetTable({
 
   const SPECIAL_DURATION_OPTIONS = ['0.5', '1'];
 
+  const [quickFill, setQuickFill] = useState({
+  columnId: '',
+  duration: '1',
+  startDate: '',
+  endDate: '',
+  absenceType: CRA_DAY_TYPES.CONGE,
+  absenceReason: '',
+});
+
+useEffect(() => {
+  if (readOnly) return;
+
+  const enabledRows = rows.filter((row) => !row.disabled);
+  if (!enabledRows.length) return;
+
+  setQuickFill((previousQuickFill) => {
+    const firstNormalColumn = activityColumns.find(
+      (column) => !isSpecialActivityColumn(column),
+    );
+
+    return {
+      ...previousQuickFill,
+      columnId:
+        previousQuickFill.columnId ||
+        firstNormalColumn?.id ||
+        ABSENCES_COLUMN_ID,
+      startDate: previousQuickFill.startDate || enabledRows[0].date,
+      endDate:
+        previousQuickFill.endDate ||
+        enabledRows[enabledRows.length - 1].date,
+    };
+  });
+}, [readOnly, rows, activityColumns]);
+
+const [quickFillSnapshot, setQuickFillSnapshot] = useState(null);
+
   useEffect(() => {
     const tableScroll = tableScrollRef.current;
     const floatingScroll = floatingScrollRef.current;
@@ -459,8 +495,231 @@ function CraTimesheetTable({
   );
 };
 
+const updateQuickFill = (field, value) => {
+  setQuickFill((previousQuickFill) => ({
+    ...previousQuickFill,
+    [field]: value,
+  }));
+};
+
+const isRowInQuickFillRange = (row) => {
+  if (!quickFill.startDate || !quickFill.endDate) return false;
+
+  return row.date >= quickFill.startDate && row.date <= quickFill.endDate;
+};
+
+const cloneRows = (rowsToClone) =>
+  rowsToClone.map((row) => ({
+    ...row,
+    activities: {
+      ...(row.activities || {}),
+    },
+  }));
+
+const applyQuickFill = () => {
+  if (!quickFill.columnId || !quickFill.duration) return;
+
+  setRows((previousRows) => {
+    setQuickFillSnapshot(cloneRows(previousRows));
+
+    const nextRows = previousRows.map((row) => {
+      if (row.disabled || !isRowInQuickFillRange(row)) {
+        return row;
+      }
+
+      let nextActivities = {
+        ...(row.activities || {}),
+      };
+
+      if (quickFill.columnId === ABSENCES_COLUMN_ID) {
+        activityColumns.forEach((column) => {
+          if (!isSpecialActivityColumn(column)) {
+            nextActivities[column.id] = '';
+          }
+        });
+
+        nextActivities[ABSENCES_COLUMN_ID] = quickFill.duration;
+
+        return {
+          ...row,
+          type: quickFill.absenceType,
+          commentaire:
+            quickFill.absenceType === CRA_DAY_TYPES.ABSENCE
+              ? quickFill.absenceReason
+              : '',
+          activities: nextActivities,
+        };
+      }
+
+      if (isAbsenceLikeType(row.type)) {
+        nextActivities = {
+          ...nextActivities,
+          [ABSENCES_COLUMN_ID]: '',
+        };
+
+        activityColumns.forEach((column) => {
+          nextActivities[column.id] = '';
+        });
+      }
+
+      if (Number(quickFill.duration) === 1) {
+        activityColumns.forEach((column) => {
+          if (!isSpecialActivityColumn(column)) {
+            nextActivities[column.id] = '';
+          }
+        });
+
+        nextActivities[ABSENCES_COLUMN_ID] = '';
+      }
+
+      nextActivities[quickFill.columnId] = quickFill.duration;
+
+      return {
+        ...row,
+        type: CRA_DAY_TYPES.TRAVAIL,
+        commentaire: '',
+        activities: nextActivities,
+      };
+    });
+
+    return syncColumnsAndRows(nextRows);
+  });
+};
+
+const cancelQuickFill = () => {
+  if (!quickFillSnapshot) return;
+
+  setRows(syncColumnsAndRows(cloneRows(quickFillSnapshot)));
+  setQuickFillSnapshot(null);
+};
+
   return (
     <div className="timesheet-scroll-container">
+      {!readOnly && (
+  <div className="timesheet-quick-fill">
+    <div className="quick-fill-header">
+      <h3>Remplissage rapide</h3>
+      <p>Appliquer une durée sur plusieurs jours en une seule fois.</p>
+    </div>
+
+    <div className="quick-fill-grid">
+      <label>
+        Colonne
+        <select
+          value={quickFill.columnId}
+          onChange={(event) =>
+            updateQuickFill('columnId', event.target.value)
+          }
+        >
+          <option value={ABSENCES_COLUMN_ID}>Absences</option>
+
+          {activityColumns
+            .filter((column) => !isSpecialActivityColumn(column))
+            .map((column) => (
+              <option key={column.id} value={column.id}>
+                {column.nom || 'Nom activité'}
+              </option>
+            ))}
+        </select>
+      </label>
+
+      {quickFill.columnId === ABSENCES_COLUMN_ID && (
+        <>
+          <label>
+            Type
+            <select
+              value={quickFill.absenceType}
+              onChange={(event) =>
+                updateQuickFill('absenceType', event.target.value)
+              }
+            >
+              <option value={CRA_DAY_TYPES.CONGE}>Congé</option>
+              <option value={CRA_DAY_TYPES.ABSENCE}>Absence</option>
+              <option value={CRA_DAY_TYPES.RTT}>RTT</option>
+              <option value={CRA_DAY_TYPES.ARRET_MALADIE}>
+                Arrêt maladie
+              </option>
+            </select>
+          </label>
+
+          {quickFill.absenceType === CRA_DAY_TYPES.ABSENCE && (
+            <label>
+              Motif
+              <input
+                type="text"
+                value={quickFill.absenceReason}
+                onChange={(event) =>
+                  updateQuickFill('absenceReason', event.target.value)
+                }
+                placeholder="Ex : RDV médical"
+              />
+            </label>
+          )}
+        </>
+      )}
+
+      <label>
+        Durée
+        <select
+          value={quickFill.duration}
+          onChange={(event) =>
+            updateQuickFill('duration', event.target.value)
+          }
+        >
+          {(quickFill.columnId === ABSENCES_COLUMN_ID
+            ? SPECIAL_DURATION_OPTIONS
+            : WORK_DURATION_OPTIONS
+          ).map((duration) => (
+            <option key={duration} value={duration}>
+              {duration}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Du
+        <input
+          type="date"
+          value={quickFill.startDate}
+          onChange={(event) =>
+            updateQuickFill('startDate', event.target.value)
+          }
+        />
+      </label>
+
+      <label>
+        Au
+        <input
+          type="date"
+          value={quickFill.endDate}
+          onChange={(event) =>
+            updateQuickFill('endDate', event.target.value)
+          }
+        />
+      </label>
+
+      <div className="quick-fill-actions">
+  <button
+    type="button"
+    className="quick-fill-btn"
+    onClick={applyQuickFill}
+  >
+    Appliquer
+  </button>
+
+  <button
+    type="button"
+    className="quick-fill-cancel-btn"
+    onClick={cancelQuickFill}
+    disabled={!quickFillSnapshot}
+  >
+    Annuler
+  </button>
+</div>
+    </div>
+  </div>
+)}
       <div className="timesheet-scroll old-cra-timesheet" ref={tableScrollRef}>
         <table className="timesheet-table">
           <colgroup>

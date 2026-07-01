@@ -536,3 +536,121 @@
   margin: 0 auto;
 }
 
+.timesheet-quick-fill {
+  margin-bottom: 18px;
+  padding: 18px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.quick-fill-header {
+  margin-bottom: 14px;
+}
+
+.quick-fill-header h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.quick-fill-header p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.quick-fill-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.quick-fill-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quick-fill-grid select,
+.quick-fill-grid input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0 10px;
+  outline: none;
+}
+
+.quick-fill-grid select:focus,
+.quick-fill-grid input:focus {
+  border-color: #317ac1;
+  box-shadow: 0 0 0 3px rgba(49, 122, 193, 0.14);
+}
+
+.quick-fill-btn {
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: #317ac1;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  padding: 0 16px;
+}
+
+.quick-fill-btn:hover {
+  background: #25639d;
+}
+
+@media (max-width: 1100px) {
+  .quick-fill-grid {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .quick-fill-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quick-fill-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quick-fill-cancel-btn {
+  height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  padding: 0 16px;
+}
+
+.quick-fill-cancel-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.quick-fill-cancel-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

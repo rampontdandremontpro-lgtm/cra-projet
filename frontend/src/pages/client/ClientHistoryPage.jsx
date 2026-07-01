@@ -171,7 +171,6 @@ export default function ClientHistoryPage() {
       <main className="dashboard-content">
         <div className="cra-list-header">
           <div>
-            <p className="breadcrumb">Espace client / Historique</p>
             <h1>Historique des CRA</h1>
           </div>
         </div>
@@ -346,7 +345,7 @@ export default function ClientHistoryPage() {
   className="view-btn compact-action-btn"
   onClick={() => handleDownloadPdf(cra)}
 >
-  👁 PDF
+  PDF
 </button>
 
 <button
