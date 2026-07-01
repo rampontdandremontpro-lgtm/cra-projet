@@ -39,10 +39,11 @@ export default function ClientCraDetailPage() {
   const summaryTotals = useMemo(() => getSummaryTotals(rows), [rows]);
 
   const totalSaisi =
-    summaryTotals.travail +
-    summaryTotals.conges +
-    summaryTotals.absences +
-    summaryTotals.rtt;
+  summaryTotals.travail +
+  summaryTotals.conges +
+  summaryTotals.absences +
+  summaryTotals.arretsMaladie +
+  summaryTotals.rtt;
 
   useEffect(() => {
     loadCra();
@@ -80,8 +81,17 @@ export default function ClientCraDetailPage() {
       });
 
       setCra(data);
-      setActivityColumns(normalized.activityColumns);
-      setRows(normalized.rows);
+setActivityColumns(normalized.activityColumns);
+setRows(normalized.rows);
+setObservation(
+  data.motifRefusClient ||
+    data.motif_refus_client ||
+    data.motifRefusAdmin ||
+    data.motif_refus_admin ||
+    data.motifRefus ||
+    data.motif_refus ||
+    '',
+);
     } catch (err) {
       showToast(
         'error',
@@ -110,13 +120,15 @@ export default function ClientCraDetailPage() {
   };
 
   const getStatusClassName = () => {
-    if (cra?.statut === 'SOUMIS_CLIENT') return 'status-pending';
-    if (cra?.statut?.includes('REFUSE')) return 'status-refused';
-    if (cra?.statut?.includes('VALIDE')) return 'status-approved';
-    if (cra?.statut === 'ARCHIVE') return 'status-approved';
+  if (cra?.statut === 'SOUMIS_CLIENT') return 'status-soumis_client';
+  if (cra?.statut === 'VALIDE_CLIENT') return 'status-valide_client';
+  if (cra?.statut === 'VALIDE_ADMIN') return 'status-valide_admin';
+  if (cra?.statut === 'REFUSE_CLIENT') return 'status-refuse_client';
+  if (cra?.statut === 'REFUSE_ADMIN') return 'status-refuse_admin';
+  if (cra?.statut === 'ARCHIVE') return 'status-valide_admin';
 
-    return 'status-draft';
-  };
+  return 'status-brouillon';
+};
 
   const getCollaboratorName = () => {
     return [cra?.collaborateur?.prenom, cra?.collaborateur?.nom]
@@ -264,10 +276,6 @@ export default function ClientCraDetailPage() {
               <section className="cra-main-card">
                 <div className="cra-section-header">
                   <h2>Validation du CRA</h2>
-
-                  <span className={`status-side ${getStatusClassName()}`}>
-                    {getStatusLabel(cra.statut)}
-                  </span>
                 </div>
 
                 <div className="cra-info-grid">
@@ -333,29 +341,37 @@ export default function ClientCraDetailPage() {
                 </div>
 
                 <CraTimesheetTable
-                  rows={rows}
-                  setRows={setRows}
-                  activityColumns={activityColumns}
-                  setActivityColumns={setActivityColumns}
-                  readOnly
-                />
+  rows={rows}
+  setRows={setRows}
+  activityColumns={activityColumns}
+  setActivityColumns={setActivityColumns}
+  readOnly
+  hideReadOnlyControls
+/>
               </section>
 
               <section className="cra-main-card client-observation-card">
                 <div className="cra-section-header">
-                  <h2>Observations du client</h2>
-                </div>
-
+  <h2>
+    {cra.statut === 'REFUSE_CLIENT'
+      ? 'Motif du refus client'
+      : cra.statut === 'REFUSE_ADMIN'
+        ? 'Motif du refus admin'
+        : 'Observations du client'}
+  </h2>
+</div>
                 <div style={{ padding: '24px' }}>
                   <textarea
                     value={observation}
                     onChange={(event) => setObservation(event.target.value)}
                     disabled={!canValidate || saving}
                     placeholder={
-                      canValidate
-                        ? 'Ajoutez une observation ou un motif de refus...'
-                        : 'Le CRA a déjà été traité.'
-                    }
+  canValidate
+    ? 'Ajoutez une observation ou un motif de refus...'
+    : observation
+      ? ''
+      : 'Le CRA a déjà été traité.'
+}
                     rows={5}
                     style={{
                       width: '100%',
@@ -425,14 +441,19 @@ export default function ClientCraDetailPage() {
                 </div>
 
                 <div className="summary-line red">
-                  <span>Absences</span>
-                  <strong>{summaryTotals.absences.toFixed(1)}</strong>
-                </div>
+  <span>Absences</span>
+  <strong>{summaryTotals.absences.toFixed(1)}</strong>
+</div>
 
-                <div className="summary-line purple">
-                  <span>RTT</span>
-                  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
-                </div>
+<div className="summary-line red">
+  <span>Arrêts maladie</span>
+  <strong>{summaryTotals.arretsMaladie.toFixed(1)}</strong>
+</div>
+
+<div className="summary-line purple">
+  <span>RTT</span>
+  <strong>{summaryTotals.rtt.toFixed(1)}</strong>
+</div>
 
                 <div className="summary-total">
                   <span>Total saisi</span>
@@ -445,6 +466,7 @@ export default function ClientCraDetailPage() {
                 <div className="legend-line blue">Travail</div>
                 <div className="legend-line green">Congé</div>
                 <div className="legend-line red">Absence</div>
+                <div className="legend-line red">Arrêt maladie</div>
                 <div className="legend-line purple">RTT</div>
               </div>
             </aside>

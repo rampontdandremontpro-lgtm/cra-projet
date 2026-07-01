@@ -437,3 +437,81 @@
     flex-wrap: wrap;
   }
 }
+
+.timesheet-table tbody td:nth-child(n + 4),
+.timesheet-table tfoot td:nth-child(n + 4) {
+  text-align: center;
+}
+
+.timesheet-readonly-duration {
+  width: 100%;
+  min-width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: inherit;
+  text-align: center;
+}
+
+.timesheet-readonly-special-cell {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.timesheet-readonly-special-cell .timesheet-readonly-duration {
+  width: auto;
+  min-width: 30px;
+}
+
+.timesheet-readonly-reason {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+  color: inherit;
+  text-align: right;
+}
+
+.timesheet-row-conge .timesheet-readonly-duration,
+.timesheet-row-conge .timesheet-readonly-reason,
+.timesheet-row-conge .timesheet-readonly-special-cell {
+  color: #009b5a;
+}
+
+.timesheet-row-absence .timesheet-readonly-duration,
+.timesheet-row-absence .timesheet-readonly-reason,
+.timesheet-row-absence .timesheet-readonly-special-cell {
+  color: #ef4444;
+}
+
+.timesheet-row-rtt .timesheet-readonly-duration,
+.timesheet-row-rtt .timesheet-readonly-reason,
+.timesheet-row-rtt .timesheet-readonly-special-cell {
+  color: #7c3aed;
+}
+
+.timesheet-readonly-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 130px;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.cra-readonly-value {
+  margin: 8px 0 0;
+  color: #020617;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}

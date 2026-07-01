@@ -20,6 +20,7 @@ function CraTimesheetTable({
   activityColumns,
   setActivityColumns,
   readOnly = false,
+  hideReadOnlyControls = false,
 }) {
   const tableScrollRef = useRef(null);
   const floatingScrollRef = useRef(null);
@@ -301,55 +302,82 @@ function CraTimesheetTable({
   };
 
   const renderAbsencesCell = (row, rowIndex, column) => {
-    if (!isAbsenceLikeType(row.type)) {
+  if (row.disabled || !isAbsenceLikeType(row.type)) {
+    return <span className="timesheet-empty-cell"></span>;
+  }
+
+  if (readOnly && hideReadOnlyControls) {
+    const value = row.activities?.[column.id];
+
+    if (!value) {
       return <span className="timesheet-empty-cell"></span>;
     }
 
     if (row.type === CRA_DAY_TYPES.ABSENCE) {
       return (
-        <div className="timesheet-special-cell">
-          <input
-            type="text"
-            value={row.commentaire || ''}
-            disabled={readOnly}
-            onChange={(event) =>
-              updateRowCommentaire(rowIndex, event.target.value)
-            }
-            placeholder="Motif"
-            className="timesheet-special-reason-input"
-          />
-
-          <select
-            value={row.activities?.[column.id] || ''}
-            disabled={readOnly}
-            onChange={(event) =>
-              updateActivityValue(rowIndex, column.id, event.target.value)
-            }
-            className="timesheet-special-duration-select"
-          >
-            <option value="">Durée</option>
-            <option value="0.5">0.5</option>
-            <option value="1">1</option>
-          </select>
+        <div className="timesheet-readonly-special-cell">
+          <span className="timesheet-readonly-reason">
+            {row.commentaire || '-'}
+          </span>
+          <span className="timesheet-readonly-duration">
+            {value}
+          </span>
         </div>
       );
     }
 
     return (
-      <select
-        value={row.activities?.[column.id] || ''}
-        disabled={readOnly}
-        onChange={(event) =>
-          updateActivityValue(rowIndex, column.id, event.target.value)
-        }
-        className="timesheet-special-duration-select"
-      >
-        <option value="">Durée</option>
-        <option value="0.5">0.5</option>
-        <option value="1">1</option>
-      </select>
+      <span className="timesheet-readonly-duration">
+        {value}
+      </span>
     );
-  };
+  }
+
+  if (row.type === CRA_DAY_TYPES.ABSENCE) {
+    return (
+      <div className="timesheet-special-cell">
+        <input
+          type="text"
+          value={row.commentaire || ''}
+          disabled={readOnly}
+          onChange={(event) =>
+            updateRowCommentaire(rowIndex, event.target.value)
+          }
+          placeholder="Motif"
+          className="timesheet-special-reason-input"
+        />
+
+        <select
+          value={row.activities?.[column.id] || ''}
+          disabled={readOnly}
+          onChange={(event) =>
+            updateActivityValue(rowIndex, column.id, event.target.value)
+          }
+          className="timesheet-special-duration-select"
+        >
+          <option value="">Durée</option>
+          <option value="0.5">0.5</option>
+          <option value="1">1</option>
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={row.activities?.[column.id] || ''}
+      disabled={readOnly}
+      onChange={(event) =>
+        updateActivityValue(rowIndex, column.id, event.target.value)
+      }
+      className="timesheet-special-duration-select"
+    >
+      <option value="">Durée</option>
+      <option value="0.5">0.5</option>
+      <option value="1">1</option>
+    </select>
+  );
+};
 
   const renderActivityCell = (row, rowIndex, column) => {
     if (row.disabled) {
@@ -371,6 +399,16 @@ function CraTimesheetTable({
     ) {
       return <span className="timesheet-empty-cell"></span>;
     }
+
+    if (readOnly && hideReadOnlyControls) {
+  const value = row.activities?.[column.id];
+
+  return (
+    <span className="timesheet-readonly-duration">
+      {value !== '' && value !== null && value !== undefined ? value : '-'}
+    </span>
+  );
+}
 
     const durationOptions =
       row.type === CRA_DAY_TYPES.TRAVAIL
@@ -472,8 +510,10 @@ function CraTimesheetTable({
                         {getDisabledReason(row)}
                       </span>
                     ) : readOnly ? (
-                      <span>{CRA_DAY_TYPE_LABELS[row.type] || row.type}</span>
-                    ) : (
+  <span className={`type-select timesheet-readonly-type type-${row.type.toLowerCase()}`}>
+    {CRA_DAY_TYPE_LABELS[row.type] || row.type}
+  </span>
+) : (
                       <select
                         className={`type-select type-${row.type.toLowerCase()}`}
                         value={row.type}

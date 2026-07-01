@@ -398,7 +398,7 @@ function CraDetailPage() {
   };
 
   const getStatusClassName = () => {
-    if (cra?.statut === 'BROUILLON') return 'status-draft';
+    if (cra?.statut === 'BROUILLON') return 'status-brouillon';
     if (cra?.statut?.includes('REFUSE')) return 'status-refused';
     if (cra?.statut?.includes('VALIDE')) return 'status-approved';
     if (cra?.statut === 'SOUMIS_CLIENT') return 'status-pending';
@@ -500,19 +500,9 @@ function CraDetailPage() {
 
                   <div>
                     <label>Mois</label>
-                    <select
-                      value={mois}
-                      disabled={!isEditable || saving}
-                      onChange={(event) => handleChangeMois(event.target.value)}
-                    >
-                      {MONTH_NAMES.map((monthName, index) =>
-                        index === 0 ? null : (
-                          <option key={monthName} value={index}>
-                            {monthName}
-                          </option>
-                        ),
-                      )}
-                    </select>
+                    <p className="cra-readonly-value">
+  {MONTH_NAMES[Number(mois)]}
+</p>
                   </div>
 
                   <div>
@@ -520,8 +510,9 @@ function CraDetailPage() {
                     <input
                       type="number"
                       value={annee}
-                      min="2025"
-                      disabled={!isEditable || saving}
+                      min="2026"
+                      max="2031"
+                      disabled
                       onChange={(event) => handleChangeAnnee(event.target.value)}
                     />
                   </div>

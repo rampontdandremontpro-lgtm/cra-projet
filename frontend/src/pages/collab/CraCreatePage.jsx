@@ -398,7 +398,8 @@ if (assignmentStartDate && todayIso < assignmentStartDate) {
                     <input
                       type="number"
                       value={annee}
-                      min="2025"
+                      min="2026"
+                      max="2031"
                       onChange={(event) => setAnnee(Number(event.target.value))}
                     />
                   </div>
