@@ -71,7 +71,9 @@ export default function ClientCraValidationPage() {
     return '-';
   };
 
-  const handleDownloadPdf = async (cra) => {
+  const handleDownloadPdf = async (cra, event) => {
+    event?.stopPropagation();
+
     try {
       await downloadCraPdf(cra);
     } catch (err) {
@@ -115,21 +117,25 @@ export default function ClientCraValidationPage() {
             <p className="empty-text">Aucun CRA à valider pour le moment.</p>
           ) : (
             <div className="table-responsive">
-            <table className="cra-dashboard-table client-validation-table">
+            <table className="cra-dashboard-table client-validation-table clickable-table">
               <thead>
                 <tr>
                   <th>Collaborateur</th>
                   <th>Mois</th>
                   <th>Année</th>
                   <th>Service</th>
+                  <th aria-label="Télécharger PDF"></th>
                   <th>Statut</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
 
               <tbody>
                 {crasToValidate.map((cra) => (
-                  <tr key={cra.id}>
+                  <tr
+                    key={cra.id}
+                    className="clickable-row"
+                    onClick={() => navigate(`/client/cra/${cra.id}`)}
+                  >
                     <td>{getCollaboratorName(cra)}</td>
 
                     <td>
@@ -144,31 +150,25 @@ export default function ClientCraValidationPage() {
                     <td>{getServiceLabel(cra)}</td>
 
                     <td>
+                      <div className="actions-cell download-actions-cell">
+                        <button
+                          type="button"
+                          className="download-btn compact-action-btn"
+                          onClick={(event) => handleDownloadPdf(cra, event)}
+                          title="Télécharger le PDF"
+                          aria-label="Télécharger le PDF"
+                        >
+                          ⬇️
+                        </button>
+                      </div>
+                    </td>
+
+                    <td>
                       <span
                         className={`status-badge status-${cra.statut.toLowerCase()}`}
                       >
                         {getStatusLabel(cra.statut)}
                       </span>
-                    </td>
-
-                    <td>
-                      <div className="actions-cell">
-                        <button
-                          type="button"
-                          className="view-btn compact-action-btn"
-                          onClick={() => handleDownloadPdf(cra)}
-                        >
-                          PDF
-                        </button>
-
-                        <button
-                          type="button"
-                          className="edit-btn compact-action-btn"
-                          onClick={() => navigate(`/client/cra/${cra.id}`)}
-                        >
-                          À valider
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))}

@@ -210,3 +210,33 @@
   opacity: 1;
   cursor: default;
 }
+/* Sidebar fixe pendant le scroll */
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: 100vh;
+  min-height: 100vh;
+  overflow-y: auto;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  z-index: 20;
+}
+
+.sidebar-app-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  display: block;
+}
+
+.sidebar-logo {
+  align-items: center;
+  gap: 14px;
+}
+
+.sidebar-logo h2 {
+  line-height: 1.1;
+}

@@ -14,7 +14,6 @@ const menuByRole = {
   CLIENT: [
     { label: 'Tableau de bord', path: '/client/dashboard' },
     { label: 'CRA à valider', path: '/client/cra-a-valider' },
-    { label: 'Historique', path: '/client/historique' },
   ],
 
   RH: [
@@ -58,7 +57,11 @@ export default function Sidebar() {
   return (
     <aside className={`sidebar ${sidebarRoleClass}`}>
       <div className="sidebar-logo">
-        <div className="sidebar-icon">📄</div>
+        <img
+          src="/logo-pole-applicatif.png"
+          alt="Pôle Applicatif"
+          className="sidebar-app-logo"
+        />
 
         <div>
           <h2>Gestion CRA</h2>

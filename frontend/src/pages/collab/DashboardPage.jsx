@@ -42,7 +42,17 @@ const loadCra = async () => {
   }
 };
 
-  const handleViewCra = async (cra) => {
+  const canDownloadPdf = (cra) =>
+    [
+      'SOUMIS_CLIENT',
+      'VALIDE_CLIENT',
+      'VALIDE_ADMIN',
+      'REFUSE_CLIENT',
+      'REFUSE_ADMIN',
+      'ARCHIVE',
+    ].includes(cra.statut);
+
+  const handleOpenCra = async (cra) => {
     if (
       cra.statut === 'BROUILLON' ||
       cra.statut === 'REFUSE_CLIENT' ||
@@ -51,6 +61,17 @@ const loadCra = async () => {
       navigate(`/mes-cra/${cra.id}`);
       return;
     }
+
+    try {
+      await downloadCraPdf(cra);
+    } catch (error) {
+      console.error('Erreur PDF :', error);
+      alert("Impossible d'ouvrir le PDF.");
+    }
+  };
+
+  const handleDownloadPdf = async (cra, event) => {
+    event?.stopPropagation();
 
     try {
       await downloadCraPdf(cra);
@@ -252,14 +273,14 @@ const companyLogo = getCompanyLogo(companyName);
             <p className="empty-text">Aucun CRA à afficher pour le moment.</p>
           ) : (
             <div className="table-responsive">
-            <table className="cra-dashboard-table collab-dashboard-table">
+            <table className="cra-dashboard-table collab-dashboard-table clickable-table">
               <thead>
                 <tr>
                   <th>Mois</th>
                   <th>Année</th>
-                  <th>Statut</th>
                   <th>Date de soumission</th>
-                  <th>Actions</th>
+                  <th aria-label="Télécharger PDF"></th>
+                  <th>Statut</th>
                 </tr>
               </thead>
 
@@ -278,7 +299,11 @@ const companyLogo = getCompanyLogo(companyName);
                   })
                   .slice(0, 5)
                   .map((cra) => (
-                    <tr key={cra.id}>
+                    <tr
+                      key={cra.id}
+                      className="clickable-row"
+                      onClick={() => handleOpenCra(cra)}
+                    >
                       <td>
                         <div className="month-cell">
                           <span className="month-icon">📅</span>
@@ -288,6 +313,24 @@ const companyLogo = getCompanyLogo(companyName);
 
                       <td>{cra.annee}</td>
 
+                      <td>{getSubmissionDate(cra)}</td>
+
+                      <td>
+                        <div className="actions-cell download-actions-cell">
+                          {canDownloadPdf(cra) ? (
+                            <button
+                              type="button"
+                              className="download-btn compact-action-btn"
+                              onClick={(event) => handleDownloadPdf(cra, event)}
+                              title="Télécharger le PDF"
+                              aria-label="Télécharger le PDF"
+                            >
+                              ⬇️
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+
                       <td>
                         <span
                           className={`status-badge status-${cra.statut.toLowerCase()}`}
@@ -295,24 +338,6 @@ const companyLogo = getCompanyLogo(companyName);
                           {getStatusLabel(cra.statut)}
                         </span>
                       </td>
-
-                      <td>{getSubmissionDate(cra)}</td>
-
-                      <td>
-  <div className="actions-cell">
-    <button
-      type="button"
-      className="view-btn"
-      onClick={() => handleViewCra(cra)}
-    >
-      {cra.statut === 'BROUILLON' ||
-      cra.statut === 'REFUSE_CLIENT' ||
-      cra.statut === 'REFUSE_ADMIN'
-        ? '✏️ Modifier'
-        : 'Voir le PDF'}
-    </button>
-  </div>
-</td>
                     </tr>
                   ))}
               </tbody>

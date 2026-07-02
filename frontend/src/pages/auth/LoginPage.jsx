@@ -53,7 +53,11 @@ export default function LoginPage() {
     <main className="auth-page">
       <section className="auth-card">
         <div className="auth-logo">
-          <div className="auth-logo-icon">📄</div>
+          <img
+            src="/logo-pole-applicatif.png"
+            alt="Pôle Applicatif"
+            className="auth-app-logo"
+          />
 
           <div>
             <h1>Gestion CRA</h1>

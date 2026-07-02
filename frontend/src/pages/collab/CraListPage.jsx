@@ -82,7 +82,26 @@ export default function CraListPage() {
     return new Date(date).toLocaleDateString('fr-FR');
   };
 
-  const handleViewCra = async (cra) => {
+  const canDownloadPdf = (cra) =>
+    [
+      'SOUMIS_CLIENT',
+      'VALIDE_CLIENT',
+      'VALIDE_ADMIN',
+      'REFUSE_CLIENT',
+      'REFUSE_ADMIN',
+      'ARCHIVE',
+    ].includes(cra.statut);
+
+  const handleOpenCra = async (cra) => {
+    if (
+      cra.statut === 'BROUILLON' ||
+      cra.statut === 'REFUSE_CLIENT' ||
+      cra.statut === 'REFUSE_ADMIN'
+    ) {
+      navigate(`/mes-cra/${cra.id}`);
+      return;
+    }
+
     try {
       await downloadCraPdf(cra);
     } catch (error) {
@@ -91,7 +110,20 @@ export default function CraListPage() {
     }
   };
 
-  const handleDeleteCra = async (cra) => {
+  const handleDownloadPdf = async (cra, event) => {
+    event?.stopPropagation();
+
+    try {
+      await downloadCraPdf(cra);
+    } catch (error) {
+      console.error(error);
+      alert("Impossible d'ouvrir le PDF.");
+    }
+  };
+
+  const handleDeleteCra = async (cra, event) => {
+    event?.stopPropagation();
+
     const confirmDelete = confirm(
       `Voulez-vous vraiment supprimer le CRA de ${getMonthName(cra.mois)} ${cra.annee} ?`,
     );
@@ -147,21 +179,25 @@ export default function CraListPage() {
             <p className="empty-text">Aucun CRA trouvé.</p>
           ) : (
             <div className="table-responsive">
-            <table className="cra-dashboard-table collab-list-table">
+            <table className="cra-dashboard-table collab-list-table clickable-table">
               <thead>
                 <tr>
                   <th>Mois</th>
                   <th>Année</th>
                   <th>Service / Client</th>
-                  <th>Statut</th>
                   <th>Date de soumission</th>
-                  <th>Actions</th>
+                  <th aria-label="Télécharger PDF"></th>
+                  <th>Statut</th>
                 </tr>
               </thead>
 
               <tbody>
                 {cras.map((cra) => (
-                  <tr key={cra.id}>
+                  <tr
+                    key={cra.id}
+                    className="clickable-row"
+                    onClick={() => handleOpenCra(cra)}
+                  >
                     <td>
                       <div className="month-cell">
                         <span className="month-icon">📅</span>
@@ -173,57 +209,40 @@ export default function CraListPage() {
 
                     <td>{getServiceLabel(cra)}</td>
 
+                    <td>{getSubmissionDate(cra)}</td>
+
+                    <td>
+                      <div className="actions-cell download-actions-cell">
+                        {canDownloadPdf(cra) ? (
+                          <button
+                            type="button"
+                            className="download-btn compact-action-btn"
+                            onClick={(event) => handleDownloadPdf(cra, event)}
+                            title="Télécharger le PDF"
+                            aria-label="Télécharger le PDF"
+                          >
+                            ⬇️
+                          </button>
+                        ) : null}
+
+                        {cra.statut === 'BROUILLON' && (
+                          <button
+                            type="button"
+                            className="delete-btn"
+                            onClick={(event) => handleDeleteCra(cra, event)}
+                          >
+                            🗑 Supprimer
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
                     <td>
                       <span
                         className={`status-badge status-${cra.statut.toLowerCase()}`}
                       >
                         {getStatusLabel(cra.statut)}
                       </span>
-                    </td>
-
-                    <td>{getSubmissionDate(cra)}</td>
-
-                    <td>
-                      <div className="actions-cell">
-                        {[
-                          'SOUMIS_CLIENT',
-                          'VALIDE_CLIENT',
-                          'VALIDE_ADMIN',
-                          'ARCHIVE',
-                        ].includes(cra.statut) && (
-                          <button
-                            type="button"
-                            className="view-btn"
-                            onClick={() => handleViewCra(cra)}
-                          >
-                            PDF
-                          </button>
-                        )}
-
-                        {[
-                          'BROUILLON',
-                          'REFUSE_CLIENT',
-                          'REFUSE_ADMIN',
-                        ].includes(cra.statut) && (
-                          <button
-                            type="button"
-                            className="edit-btn"
-                            onClick={() => navigate(`/mes-cra/${cra.id}`)}
-                          >
-                            ✏️ Éditer
-                          </button>
-                        )}
-
-                        {cra.statut === 'BROUILLON' && (
-                          <button
-                            type="button"
-                            className="delete-btn"
-                            onClick={() => handleDeleteCra(cra)}
-                          >
-                            🗑 Supprimer
-                          </button>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 ))}

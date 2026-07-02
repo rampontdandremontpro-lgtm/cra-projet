@@ -417,3 +417,199 @@
 .table-responsive::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* Améliorations tableaux : ligne cliquable + téléchargement PDF */
+
+.clickable-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.clickable-table tbody tr.clickable-row:hover {
+  background: #f8fafc;
+}
+
+.download-actions-cell {
+  justify-content: center !important;
+}
+
+.actions-cell .download-btn,
+.download-btn {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  border: 1px solid #bfdbfe !important;
+  background: #ffffff !important;
+  color: #2563eb !important;
+  font-size: 15px !important;
+  font-weight: 900 !important;
+  font-family: inherit !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+}
+
+.actions-cell .download-btn:hover,
+.download-btn:hover {
+  background: #eff6ff !important;
+}
+
+.no-action-placeholder {
+  color: #94a3b8;
+  font-weight: 900;
+}
+
+.dashboard-table-filters {
+  padding-top: 0;
+}
+
+.dashboard-cards-bottom {
+  margin-top: 24px;
+  margin-bottom: 0;
+}
+
+/* Nouveau tableau client : Collaborateur | Mois | Année | Service | Date | PDF | Statut */
+.client-history-table th:nth-child(1),
+.client-history-table td:nth-child(1) {
+  width: 15%;
+  text-align: left;
+}
+
+.client-history-table th:nth-child(2),
+.client-history-table td:nth-child(2) {
+  width: 13%;
+  text-align: left;
+}
+
+.client-history-table th:nth-child(3),
+.client-history-table td:nth-child(3) {
+  width: 8%;
+  text-align: center;
+}
+
+.client-history-table th:nth-child(4),
+.client-history-table td:nth-child(4) {
+  width: 27%;
+  text-align: left;
+}
+
+.client-history-table th:nth-child(5),
+.client-history-table td:nth-child(5) {
+  width: 13%;
+  text-align: center;
+}
+
+.client-history-table th:nth-child(6),
+.client-history-table td:nth-child(6) {
+  width: 7% !important;
+  text-align: center;
+}
+
+.client-history-table th:nth-child(7),
+.client-history-table td:nth-child(7) {
+  width: 17% !important;
+  text-align: center;
+}
+
+/* Validation client : Collaborateur | Mois | Année | Service | PDF | Statut */
+.client-validation-table th:nth-child(5),
+.client-validation-table td:nth-child(5) {
+  width: 8% !important;
+  text-align: center;
+}
+
+.client-validation-table th:nth-child(6),
+.client-validation-table td:nth-child(6) {
+  width: 25% !important;
+  text-align: center;
+}
+
+/* Dashboard collaborateur : Mois | Année | Date | PDF | Statut */
+.collab-dashboard-table th:nth-child(3),
+.collab-dashboard-table td:nth-child(3) {
+  width: 24%;
+  text-align: center;
+}
+
+.collab-dashboard-table th:nth-child(4),
+.collab-dashboard-table td:nth-child(4) {
+  width: 8% !important;
+  text-align: center;
+}
+
+.collab-dashboard-table th:nth-child(5),
+.collab-dashboard-table td:nth-child(5) {
+  width: 34% !important;
+  text-align: center;
+}
+
+/* Liste collaborateur : Mois | Année | Service | Date | PDF/Supprimer | Statut */
+.collab-list-table th:nth-child(4),
+.collab-list-table td:nth-child(4) {
+  width: 15%;
+  text-align: center;
+}
+
+.collab-list-table th:nth-child(5),
+.collab-list-table td:nth-child(5) {
+  width: 16% !important;
+  text-align: center;
+}
+
+.collab-list-table th:nth-child(6),
+.collab-list-table td:nth-child(6) {
+  width: 18% !important;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .client-history-filters,
+  .dashboard-table-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .client-history-filters,
+  .dashboard-table-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+.status-archive::before {
+  background: #10b981;
+}
+
+.status-archive {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+/* FIX final tableau Tous mes CRA : téléchargement et placeholder */
+
+.no-action-placeholder {
+  display: none !important;
+}
+
+.client-history-table th:nth-child(6),
+.client-history-table td:nth-child(6) {
+  width: 12% !important;
+  text-align: right !important;
+  padding-right: 28px !important;
+}
+
+.client-history-table td:nth-child(6) .download-actions-cell {
+  justify-content: flex-end !important;
+}
+
+.download-btn.compact-action-btn {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+}

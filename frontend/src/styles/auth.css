@@ -133,3 +133,92 @@
   margin-bottom: 18px;
   font-size: 14px;
 }
+
+.auth-logo {
+  justify-content: center;
+  text-align: center;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 26px;
+}
+
+.auth-app-logo {
+  width: 180px;
+  max-width: 80%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.auth-logo h1,
+.auth-logo p {
+  text-align: center;
+}
+
+.auth-header {
+  text-align: center;
+}
+
+.auth-header h2 {
+  margin: 0;
+}
+
+.auth-header p {
+  margin: 8px 0 24px;
+}
+
+.auth-page {
+  align-items: flex-start;
+  padding-top: 42px;
+}
+
+.auth-card {
+  padding-top: 26px;
+}
+
+.auth-logo {
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.auth-app-logo {
+  width: 155px;
+}
+
+.auth-header h2 {
+  margin-top: 0;
+}
+
+.auth-header p {
+  margin: 6px 0 22px;
+}
+
+.auth-page {
+  align-items: flex-start !important;
+  padding-top: 18px !important;
+}
+
+.auth-card {
+  padding-top: 18px !important;
+}
+
+.auth-logo {
+  margin-top: -8px !important;
+  margin-bottom: 12px !important;
+}
+
+.auth-app-logo {
+  width: 150px !important;
+}
+
+.auth-header {
+  margin-top: -2px !important;
+}
+
+.auth-header h2 {
+  margin-top: 0 !important;
+}
+
+.auth-header p {
+  margin: 4px 0 20px !important;
+}

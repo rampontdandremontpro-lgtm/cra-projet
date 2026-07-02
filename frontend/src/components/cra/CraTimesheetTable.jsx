@@ -658,7 +658,7 @@ const cancelQuickFill = () => {
         </>
       )}
 
-      <label>
+      <label className="quick-fill-duration-field">
         Durée
         <select
           value={quickFill.duration}
@@ -677,7 +677,7 @@ const cancelQuickFill = () => {
         </select>
       </label>
 
-      <label>
+      <label className="quick-fill-date-field">
         Du
         <input
           type="date"
@@ -688,7 +688,7 @@ const cancelQuickFill = () => {
         />
       </label>
 
-      <label>
+      <label className="quick-fill-date-field">
         Au
         <input
           type="date"
@@ -700,23 +700,23 @@ const cancelQuickFill = () => {
       </label>
 
       <div className="quick-fill-actions">
-  <button
-    type="button"
-    className="quick-fill-btn"
-    onClick={applyQuickFill}
-  >
-    Appliquer
-  </button>
+        <button
+          type="button"
+          className="quick-fill-btn"
+          onClick={applyQuickFill}
+        >
+          Appliquer
+        </button>
 
-  <button
-    type="button"
-    className="quick-fill-cancel-btn"
-    onClick={cancelQuickFill}
-    disabled={!quickFillSnapshot}
-  >
-    Annuler
-  </button>
-</div>
+        <button
+          type="button"
+          className="quick-fill-cancel-btn"
+          onClick={cancelQuickFill}
+          disabled={!quickFillSnapshot}
+        >
+          Annuler
+        </button>
+      </div>
     </div>
   </div>
 )}

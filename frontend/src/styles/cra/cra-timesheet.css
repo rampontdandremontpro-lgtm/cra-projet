@@ -654,3 +654,192 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* Remplissage rapide responsive */
+
+.quick-fill-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.quick-fill-actions {
+  width: 100%;
+}
+
+.quick-fill-actions button {
+  flex: 1;
+  min-width: 110px;
+}
+
+@media (max-width: 700px) {
+  .timesheet-quick-fill {
+    padding: 14px;
+  }
+
+  .quick-fill-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-fill-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quick-fill-actions button {
+    width: 100%;
+  }
+}
+
+/* FIX responsive remplissage rapide */
+
+.quick-fill-grid {
+  grid-template-columns: minmax(150px, 1.25fr) minmax(110px, 0.8fr) minmax(92px, 0.55fr) minmax(145px, 0.9fr) minmax(145px, 0.9fr) minmax(190px, auto);
+  align-items: end;
+}
+
+.quick-fill-grid label {
+  min-width: 0;
+}
+
+.quick-fill-duration-field {
+  max-width: 96px;
+}
+
+.quick-fill-actions {
+  width: max-content;
+  min-width: 188px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.quick-fill-actions button {
+  flex: 0 0 auto;
+  min-width: 86px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+@media (max-width: 1300px) {
+  .quick-fill-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .quick-fill-duration-field {
+    max-width: 120px;
+  }
+
+  .quick-fill-actions {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .quick-fill-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-fill-duration-field {
+    max-width: none;
+  }
+
+  .quick-fill-actions {
+    width: 100%;
+    flex-direction: row;
+  }
+
+  .quick-fill-actions button {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* FIX FINAL - Remplissage rapide responsive et champ Durée réduit */
+
+.quick-fill-grid {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: flex-end !important;
+  gap: 12px !important;
+}
+
+.quick-fill-grid label {
+  flex: 1 1 160px !important;
+  min-width: 0 !important;
+}
+
+.quick-fill-duration-field {
+  flex: 0 0 86px !important;
+  max-width: 86px !important;
+}
+
+.quick-fill-duration-field select {
+  width: 86px !important;
+  min-width: 86px !important;
+  padding-left: 10px !important;
+  padding-right: 8px !important;
+}
+
+.quick-fill-date-field {
+  flex: 0 0 145px !important;
+  max-width: 145px !important;
+}
+
+.quick-fill-actions {
+  flex: 0 0 230px !important;
+  width: 230px !important;
+  min-width: 230px !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  gap: 10px !important;
+}
+
+.quick-fill-actions button {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1100px) {
+  .quick-fill-grid label,
+  .quick-fill-date-field {
+    flex: 1 1 150px !important;
+    max-width: none !important;
+  }
+
+  .quick-fill-duration-field {
+    flex: 0 0 86px !important;
+    max-width: 86px !important;
+  }
+
+  .quick-fill-actions {
+    flex: 1 1 230px !important;
+    width: auto !important;
+    min-width: 220px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .quick-fill-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .quick-fill-grid label,
+  .quick-fill-duration-field,
+  .quick-fill-date-field,
+  .quick-fill-actions {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
+  .quick-fill-duration-field select {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .quick-fill-actions {
+    flex-direction: row !important;
+  }
+}
